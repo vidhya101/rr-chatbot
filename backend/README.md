@@ -1,123 +1,105 @@
 # RR-Chatbot Backend
 
-The backend for RR-Chatbot, built with FastAPI, SQLAlchemy, and Redis.
+This is the backend for the RR-Chatbot application, built with Flask and SQLAlchemy.
 
 ## Features
 
-- **FastAPI Framework**: Modern, fast web framework for building APIs
-- **Async Support**: Fully asynchronous API endpoints
-- **SQLAlchemy ORM**: SQL toolkit and ORM with async support
-- **Redis Caching**: Efficient caching for improved performance
-- **AI Model Integration**: Support for OpenAI and Mistral AI models
-- **Data Visualization**: Generate visualizations and dashboards from data
-- **WebSocket Support**: Real-time communication for chat
+- RESTful API with Flask
+- JWT authentication
+- Database integration with SQLAlchemy
+- File upload and processing
+- OpenAI integration
+- Socket.IO for real-time communication
+- User management
+- Dashboard and analytics
 
 ## Getting Started
 
 ### Prerequisites
 
-- Python 3.9+
-- Redis server
-- PostgreSQL (optional, SQLite is used by default)
+- Python 3.8+
+- pip
+- Virtual environment (recommended)
 
 ### Installation
 
-1. Create a virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
+1. Create and activate a virtual environment:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
 
 2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-3. Set up environment variables:
-```bash
-cp ../.env.example .env
-# Edit .env with your configuration
-```
+3. Create a `.env` file based on `.env.example`:
+   ```bash
+   cp .env.example .env
+   ```
 
-4. Start the server:
-```bash
-uvicorn main:app --reload
-```
+4. Run the application:
+   ```bash
+   python app.py
+   ```
 
-## API Documentation
-
-Once the server is running, you can access the API documentation at:
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
+5. The API will be available at `http://localhost:5000`
 
 ## Project Structure
 
 ```
 backend/
-├── api/
-│   ├── db/
-│   │   ├── database.py - Database connection and session management
-│   │   └── redis_client.py - Redis connection and utilities
-│   ├── models/
-│   │   ├── chat.py - Pydantic models for chat functionality
-│   │   └── visualization.py - Models for visualization features
-│   ├── routes/
-│   │   ├── chat.py - Chat API endpoints
-│   │   ├── file.py - File management endpoints
-│   │   └── visualization.py - Visualization endpoints
-│   └── services/
-│       ├── chat_service.py - Chat generation logic
-│       ├── file_service.py - File handling utilities
-│       └── visualization_service.py - Visualization generation
-├── uploads/ - Directory for uploaded files and visualizations
-├── main.py - Application entry point
-└── requirements.txt - Project dependencies
-```
-
-## Environment Variables
-
-The backend uses the following environment variables:
-
-```
-# Database
-DATABASE_URI=sqlite:///app.db
-
-# Redis
-REDIS_URL=redis://localhost:6379/0
-
-# API Keys
-OPENAI_API_KEY=your_openai_api_key
-MISTRAL_API_KEY=your_mistral_api_key
-
-# App Settings
-UPLOAD_FOLDER=./uploads
-DEBUG=True
-PORT=8000
-HOST=0.0.0.0
-
-# Security
-SECRET_KEY=your_secret_key
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+├── app.py                 # Main Flask application
+├── config.py              # Configuration settings
+├── models/                # Database models
+├── routes/                # API routes
+├── services/              # Business logic
+├── utils/                 # Utility functions
+└── requirements.txt       # Python dependencies
 ```
 
 ## API Endpoints
 
-### Chat Endpoints
+### Authentication
+- `POST /api/auth/register` - Register a new user
+- `POST /api/auth/login` - Login a user
+- `POST /api/auth/refresh` - Refresh access token
+- `GET /api/auth/me` - Get current user
+- `POST /api/auth/logout` - Logout a user
 
-- `POST /api/chat/chat`: Send a message to the chatbot
-- `WebSocket /api/chat/ws/chat/{user_id}`: Real-time chat with streaming responses
-- `POST /api/chat/simple-chat`: Simple chat endpoint without authentication
+### Chat
+- `GET /api/chat/chats` - Get all chats
+- `GET /api/chat/chats/<chat_id>` - Get a specific chat
+- `POST /api/chat/chats` - Create a new chat
+- `PUT /api/chat/chats/<chat_id>` - Update a chat
+- `DELETE /api/chat/chats/<chat_id>` - Delete a chat
+- `POST /api/chat/chats/<chat_id>/messages` - Send a message
+- `GET /api/chat/chats/<chat_id>/messages` - Get all messages for a chat
 
-### File Endpoints
+### Files
+- `POST /api/files/upload` - Upload a file
+- `GET /api/files/files` - Get all files
+- `GET /api/files/files/<file_id>` - Get a specific file
+- `GET /api/files/files/<file_id>/download` - Download a file
+- `DELETE /api/files/files/<file_id>` - Delete a file
 
-- `POST /api/file/upload`: Upload a file
-- `GET /api/file/files`: List all uploaded files
-- `GET /api/file/files/{file_path}`: Get information about a file
-- `DELETE /api/file/files/{file_path}`: Delete a file
-- `GET /api/file/download/{file_path}`: Download a file
+### User
+- `GET /api/user/profile` - Get user profile
+- `PUT /api/user/profile` - Update user profile
+- `POST /api/user/profile/picture` - Upload profile picture
+- `GET /api/user/settings` - Get user settings
+- `PUT /api/user/settings` - Update user settings
+- `PUT /api/user/password` - Change user password
+- `GET /api/user/stats` - Get user statistics
 
-### Visualization Endpoints
-
-- `POST /api/visualization/visualize`: Generate a visualization
-- `POST /api/visualization/dashboard`: Generate a dashboard
-- `GET /api/visualization/visualizations/{filename}`: Get a visualization image 
+### Dashboard
+- `GET /api/dashboard/dashboards` - Get all dashboards
+- `GET /api/dashboard/dashboards/<dashboard_id>` - Get a specific dashboard
+- `POST /api/dashboard/dashboards` - Create a new dashboard
+- `PUT /api/dashboard/dashboards/<dashboard_id>` - Update a dashboard
+- `DELETE /api/dashboard/dashboards/<dashboard_id>` - Delete a dashboard
+- `POST /api/dashboard/dashboards/<dashboard_id>/charts` - Create a new chart
+- `PUT /api/dashboard/charts/<chart_id>` - Update a chart
+- `DELETE /api/dashboard/charts/<chart_id>` - Delete a chart
+- `GET /api/dashboard/stats` - Get dashboard statistics 

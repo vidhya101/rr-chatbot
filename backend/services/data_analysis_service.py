@@ -4,84 +4,25 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.preprocessing import StandardScaler, OneHotEncoder, MinMaxScaler
-from sklearn.model_selection import train_test_split, cross_val_score, learning_curve, GridSearchCV
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
-from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
-from sklearn.cluster import KMeans
-from sklearn.metrics import mean_squared_error, r2_score, silhouette_score, accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, classification_report
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
-from sklearn.decomposition import PCA
 import logging
 import io
 import base64
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Tuple, Union
-import traceback
-import warnings
-from scipy import stats
-from sklearn.preprocessing import PolynomialFeatures
-from sklearn.feature_selection import SelectKBest, mutual_info_regression, RFE
-from sklearn.ensemble import IsolationForest
-from sklearn.neighbors import LocalOutlierFactor
-from flask import Blueprint, request, jsonify, current_app
 
-# Create a Blueprint for data analysis routes
-data_analysis_bp = Blueprint('data_analysis', __name__)
-
-# Configure logging with more detailed format
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-class AnalysisError(Exception):
-    """Custom exception for analysis errors"""
-    pass
-
-def validate_dataframe(df: pd.DataFrame) -> bool:
-    """Validate DataFrame for analysis"""
-    if df is None or df.empty:
-        raise AnalysisError("DataFrame is empty or None")
-    if df.columns.duplicated().any():
-        raise AnalysisError("DataFrame contains duplicate column names")
-    return True
-
-def detect_time_series(df: pd.DataFrame) -> List[str]:
-    """Detect potential time series columns"""
-    time_cols = []
-    for col in df.columns:
-        try:
-            if pd.api.types.is_datetime64_any_dtype(df[col]):
-                time_cols.append(col)
-            elif pd.to_datetime(df[col], errors='coerce').notna().all():
-                time_cols.append(col)
-        except:
-            continue
-    return time_cols
-
-def convert_to_serializable(obj):
-    """Convert objects to JSON serializable format"""
-    if isinstance(obj, (np.int64, np.int32, np.int16, np.int8)):
-        return int(obj)
-    elif isinstance(obj, (np.float64, np.float32, np.float16)):
-        return float(obj)
-    elif isinstance(obj, (datetime, np.datetime64)):
-        return obj.isoformat()
-    elif isinstance(obj, (list, tuple)):
-        return [convert_to_serializable(item) for item in obj]
-    elif isinstance(obj, dict):
-        return {str(k): convert_to_serializable(v) for k, v in obj.items()}
-    elif isinstance(obj, pd.Series):
-        return convert_to_serializable(obj.to_dict())
-    elif isinstance(obj, pd.DataFrame):
-        return convert_to_serializable(obj.to_dict('records'))
-    elif isinstance(obj, np.ndarray):
-        return convert_to_serializable(obj.tolist())
-    return obj
 
 class DataAnalyzer:
     """Class for analyzing and visualizing datasets"""
@@ -93,32 +34,24 @@ class DataAnalyzer:
         self.original_df = None
         self.numeric_features = []
         self.categorical_features = []
-        self.time_series_features = []
         self.target_column = None
         self.model = None
         self.preprocessing_pipeline = None
         self.analysis_results = {}
         self.visualizations = {}
-        self.clustering_results = {}
-        self.time_series_analysis = {}
-        self.advanced_stats = {}
-        self.model_evaluation = {}
-        self.feature_importance = {}
-        self.model_interpretability = {}
-        self.anomaly_detection = {}
-    
+        
     def load_data(self):
         """Load data from file path"""
+        if self.df is not None:
+            self.original_df = self.df.copy()
+            return self.df
+            
+        if self.file_path is None:
+            raise ValueError("No file path or DataFrame provided")
+            
+        file_extension = os.path.splitext(self.file_path)[1].lower()
+        
         try:
-            if self.df is not None:
-                self.original_df = self.df.copy()
-                return self.df
-            
-            if self.file_path is None:
-                raise ValueError("No file path or DataFrame provided")
-            
-            file_extension = os.path.splitext(self.file_path)[1].lower()
-            
             if file_extension == '.csv':
                 self.df = pd.read_csv(self.file_path)
             elif file_extension in ['.xls', '.xlsx']:
@@ -130,14 +63,13 @@ class DataAnalyzer:
                 self.df = pd.read_csv(self.file_path, sep=None, engine='python')
             else:
                 raise ValueError(f"Unsupported file format: {file_extension}")
-            
+                
             self.original_df = self.df.copy()
             return self.df
-        
+            
         except Exception as e:
             logger.error(f"Error loading data: {str(e)}")
-            logger.error(traceback.format_exc())
-            raise ValueError(f"Error loading data: {str(e)}")
+            raise
     
     def explore_data(self):
         """Explore the dataset and return basic statistics"""
@@ -181,608 +113,531 @@ class DataAnalyzer:
         
         return self.analysis_results['basic_info']
     
-    def analyze_data(self):
-        """Perform exploratory data analysis"""
-        try:
-            if self.df is None:
-                self.load_data()
+    def clean_data(self, handle_missing='mean', handle_outliers=None, drop_columns=None):
+        """Clean the dataset by handling missing values and outliers"""
+        if self.df is None:
+            self.load_data()
             
-            # Correlation analysis for numeric features
-            if len(self.numeric_features) > 1:
-                correlation_matrix = self.df[self.numeric_features].corr().round(2).to_dict('split')
-                
-                # Find top correlations
-                corr_df = self.df[self.numeric_features].corr().unstack()
-                # Remove self-correlations
-                corr_df = corr_df[corr_df < 1.0]
-                # Convert index tuples to strings for JSON serialization
-                top_correlations = {f"{idx[0]}_{idx[1]}": val for idx, val in corr_df.head(10).items()}
-            else:
-                correlation_matrix = {}
-                top_correlations = {}
-            
-            # Statistical tests and distributions
-            distributions = {}
-            for col in self.numeric_features:
-                if col in self.df.columns:
-                    distributions[col] = {
-                        'mean': float(self.df[col].mean()),
-                        'median': float(self.df[col].median()),
-                        'std': float(self.df[col].std()),
-                        'min': float(self.df[col].min()),
-                        'max': float(self.df[col].max()),
-                        'skew': float(self.df[col].skew()),
-                        'kurtosis': float(self.df[col].kurtosis())
-                    }
-            
-            # Categorical analysis
-            categorical_analysis = {}
-            for col in self.categorical_features:
-                if col in self.df.columns:
-                    value_counts = self.df[col].value_counts().head(10)
-                    categorical_analysis[col] = {
-                        'unique_values': int(self.df[col].nunique()),
-                        'top_values': {str(k): int(v) for k, v in value_counts.items()}
-                    }
-            
-            # Target variable analysis if specified
-            target_analysis = {}
-            if self.target_column and self.target_column in self.df.columns:
-                if self.target_column in self.numeric_features:
-                    target_analysis = {
-                        'mean': float(self.df[self.target_column].mean()),
-                        'median': float(self.df[self.target_column].median()),
-                        'std': float(self.df[self.target_column].std()),
-                        'min': float(self.df[self.target_column].min()),
-                        'max': float(self.df[self.target_column].max()),
-                        'skew': float(self.df[self.target_column].skew()),
-                        'kurtosis': float(self.df[self.target_column].kurtosis())
-                    }
-                    
-                    # Relationship with other features
-                    if len(self.numeric_features) > 1:
-                        correlations_with_target = self.df[self.numeric_features].corr()[self.target_column]
-                        target_analysis['correlations'] = {
-                            str(col): float(corr) 
-                            for col, corr in correlations_with_target.items()
-                        }
-                
-                elif self.target_column in self.categorical_features:
-                    value_counts = self.df[self.target_column].value_counts()
-                    target_analysis = {
-                        'unique_values': int(self.df[self.target_column].nunique()),
-                        'value_counts': {str(k): int(v) for k, v in value_counts.items()}
-                    }
-            
-            # Store analysis results
-            self.analysis_results['data_analysis'] = {
-                'correlation_matrix': correlation_matrix,
-                'top_correlations': top_correlations,
-                'distributions': distributions,
-                'categorical_analysis': categorical_analysis,
-                'target_analysis': target_analysis
-            }
-            
-            return convert_to_serializable(self.analysis_results['data_analysis'])
+        # Store original shape
+        original_shape = self.df.shape
         
-        except Exception as e:
-            logger.error(f"Error in analyze_data: {str(e)}")
-            logger.error(traceback.format_exc())
-            raise AnalysisError(f"Error in analyze_data: {str(e)}")
-    
-    def analyze_outliers(self) -> Dict:
-        """Perform detailed outlier analysis"""
-        try:
-            outlier_analysis = {}
+        # Drop specified columns
+        if drop_columns:
+            self.df = self.df.drop(columns=drop_columns, errors='ignore')
             
+        # Handle missing values
+        if handle_missing == 'drop':
+            self.df = self.df.dropna()
+        elif handle_missing == 'mean':
             for col in self.numeric_features:
                 if col in self.df.columns:
-                    data = self.df[col].dropna()
-                    
-                    # Calculate Z-scores
-                    z_scores = np.abs(stats.zscore(data))
-                    
-                    # Calculate IQR bounds
-                    Q1 = data.quantile(0.25)
-                    Q3 = data.quantile(0.75)
+                    self.df[col] = self.df[col].fillna(self.df[col].mean())
+        elif handle_missing == 'median':
+            for col in self.numeric_features:
+                if col in self.df.columns:
+                    self.df[col] = self.df[col].fillna(self.df[col].median())
+        elif handle_missing == 'mode':
+            for col in self.df.columns:
+                self.df[col] = self.df[col].fillna(self.df[col].mode()[0] if not self.df[col].mode().empty else np.nan)
+                
+        # For categorical features, fill with mode
+        for col in self.categorical_features:
+            if col in self.df.columns:
+                self.df[col] = self.df[col].fillna(self.df[col].mode()[0] if not self.df[col].mode().empty else 'Unknown')
+                
+        # Handle outliers
+        if handle_outliers == 'remove':
+            for col in self.numeric_features:
+                if col in self.df.columns:
+                    Q1 = self.df[col].quantile(0.25)
+                    Q3 = self.df[col].quantile(0.75)
                     IQR = Q3 - Q1
                     lower_bound = Q1 - 1.5 * IQR
                     upper_bound = Q3 + 1.5 * IQR
-                    
-                    # Identify outliers
-                    z_score_outliers = data[z_scores > 3]
-                    iqr_outliers = data[(data < lower_bound) | (data > upper_bound)]
-                    
-                    outlier_analysis[col] = {
-                        'z_score_outliers': {
-                            'count': len(z_score_outliers),
-                            'percentage': float(len(z_score_outliers) / len(data) * 100),
-                            'values': convert_to_serializable(z_score_outliers.tolist())
-                        },
-                        'iqr_outliers': {
-                            'count': len(iqr_outliers),
-                            'percentage': float(len(iqr_outliers) / len(data) * 100),
-                            'values': convert_to_serializable(iqr_outliers.tolist())
-                        },
-                        'bounds': {
-                            'lower': float(lower_bound),
-                            'upper': float(upper_bound)
-                        }
-                    }
-            
-            return outlier_analysis
-        
-        except Exception as e:
-            logger.error(f"Error in outlier analysis: {str(e)}")
-            logger.error(traceback.format_exc())
-            raise AnalysisError(f"Outlier analysis failed: {str(e)}")
-
-    def analyze_time_series(self) -> Dict:
-        """Perform time series analysis"""
-        try:
-            time_series_analysis = {}
-            time_cols = detect_time_series(self.df)
-            
-            for time_col in time_cols:
-                if time_col in self.df.columns:
-                    # Convert to datetime if not already
-                    try:
-                        time_series = pd.to_datetime(self.df[time_col])
-                        self.df[time_col] = time_series
-                    except:
-                        continue
-                    
-                    # Basic time series statistics
-                    time_stats = {
-                        'start_date': time_series.min().isoformat(),
-                        'end_date': time_series.max().isoformat(),
-                        'duration_days': (time_series.max() - time_series.min()).days,
-                        'frequency': time_series.diff().mode().iloc[0].total_seconds() if not time_series.diff().mode().empty else None
-                    }
-                    
-                    # Analyze patterns for each numeric feature
-                    feature_patterns = {}
-                    for feature in self.numeric_features:
-                        if feature != time_col and feature in self.df.columns:
-                            try:
-                                # Create time series object
-                                ts_data = self.df.set_index(time_col)[feature]
-                                
-                                # Calculate basic statistics
-                                feature_patterns[feature] = {
-                                    'mean': float(ts_data.mean()),
-                                    'std': float(ts_data.std()),
-                                    'min': float(ts_data.min()),
-                                    'max': float(ts_data.max()),
-                                    'first_value': float(ts_data.iloc[0]),
-                                    'last_value': float(ts_data.iloc[-1]),
-                                    'change': float(ts_data.iloc[-1] - ts_data.iloc[0]),
-                                    'pct_change': float((ts_data.iloc[-1] - ts_data.iloc[0]) / ts_data.iloc[0] * 100) if ts_data.iloc[0] != 0 else 0
-                                }
-                            except Exception as e:
-                                logger.warning(f"Error analyzing patterns for feature {feature}: {str(e)}")
-                                continue
-                    
-                    time_series_analysis[time_col] = {
-                        'stats': time_stats,
-                        'patterns': feature_patterns
-                    }
-            
-            return time_series_analysis
-        
-        except Exception as e:
-            logger.error(f"Error in time series analysis: {str(e)}")
-            logger.error(traceback.format_exc())
-            raise AnalysisError(f"Time series analysis failed: {str(e)}")
-
-    def analyze_correlations(self) -> Dict:
-        """Perform detailed correlation analysis"""
-        try:
-            correlation_analysis = {}
-            
-            # Pearson correlation for numeric features
-            if len(self.numeric_features) > 1:
-                pearson_corr = self.df[self.numeric_features].corr(method='pearson')
-                spearman_corr = self.df[self.numeric_features].corr(method='spearman')
-                
-                for col1 in self.numeric_features:
-                    for col2 in self.numeric_features:
-                        if col1 != col2:
-                            key = f"{col1}_{col2}"
-                            correlation_analysis[key] = {
-                                'pearson': {
-                                    'correlation': float(pearson_corr.loc[col1, col2]),
-                                    'p_value': float(stats.pearsonr(self.df[col1].dropna(), self.df[col2].dropna())[1])
-                                },
-                                'spearman': {
-                                    'correlation': float(spearman_corr.loc[col1, col2]),
-                                    'p_value': float(stats.spearmanr(self.df[col1].dropna(), self.df[col2].dropna())[1])
-                                }
-                            }
-            
-            # Chi-square test for categorical features
-            if len(self.categorical_features) > 1:
-                for col1 in self.categorical_features:
-                    for col2 in self.categorical_features:
-                        if col1 != col2:
-                            contingency_table = pd.crosstab(self.df[col1], self.df[col2])
-                            chi2, p_value = stats.chi2_contingency(contingency_table)[:2]
-                            
-                            key = f"{col1}_{col2}"
-                            correlation_analysis[key] = {
-                                'chi_square': {
-                                    'statistic': float(chi2),
-                                    'p_value': float(p_value),
-                                    'contingency_table': contingency_table.to_dict()
-                                }
-                            }
-            
-            return correlation_analysis
-        
-        except Exception as e:
-            logger.error(f"Error in correlation analysis: {str(e)}")
-            logger.error(traceback.format_exc())
-            raise AnalysisError(f"Correlation analysis failed: {str(e)}")
-
-    def analyze_distributions(self) -> Dict:
-        """Analyze distributions of numeric and categorical features"""
-        try:
-            distribution_analysis = {}
-            
-            # Analyze numeric features
+                    self.df = self.df[(self.df[col] >= lower_bound) & (self.df[col] <= upper_bound)]
+        elif handle_outliers == 'cap':
             for col in self.numeric_features:
                 if col in self.df.columns:
-                    data = self.df[col].dropna()
+                    Q1 = self.df[col].quantile(0.25)
+                    Q3 = self.df[col].quantile(0.75)
+                    IQR = Q3 - Q1
+                    lower_bound = Q1 - 1.5 * IQR
+                    upper_bound = Q3 + 1.5 * IQR
+                    self.df[col] = np.where(self.df[col] < lower_bound, lower_bound, self.df[col])
+                    self.df[col] = np.where(self.df[col] > upper_bound, upper_bound, self.df[col])
                     
-                    # Basic statistics
-                    stats_dict = {
-                        'mean': float(data.mean()),
-                        'median': float(data.median()),
-                        'std': float(data.std()),
-                        'skewness': float(data.skew()),
-                        'kurtosis': float(data.kurtosis()),
-                        'min': float(data.min()),
-                        'max': float(data.max())
-                    }
-                    
-                    # Normality tests
-                    if len(data) >= 3:  # Minimum sample size for normality tests
-                        shapiro_test = stats.shapiro(data)
-                        ks_test = stats.kstest(data, 'norm')
-                        
-                        stats_dict.update({
-                            'normality_tests': {
-                                'shapiro': {
-                                    'statistic': float(shapiro_test[0]),
-                                    'p_value': float(shapiro_test[1])
-                                },
-                                'kolmogorov_smirnov': {
-                                    'statistic': float(ks_test[0]),
-                                    'p_value': float(ks_test[1])
-                                }
-                            }
-                        })
-                    
-                    # Quantiles
-                    quantiles = [0.1, 0.25, 0.5, 0.75, 0.9]
-                    stats_dict['quantiles'] = {
-                        str(int(q * 100)): float(data.quantile(q))
-                        for q in quantiles
-                    }
-                    
-                    distribution_analysis[col] = stats_dict
-            
-            # Analyze categorical features
-            for col in self.categorical_features:
-                if col in self.df.columns:
-                    value_counts = self.df[col].value_counts()
-                    proportions = self.df[col].value_counts(normalize=True)
-                    
-                    distribution_analysis[col] = {
-                        'unique_values': int(len(value_counts)),
-                        'mode': str(value_counts.index[0]) if not value_counts.empty else None,
-                        'frequencies': {
-                            str(k): int(v) for k, v in value_counts.items()
-                        },
-                        'proportions': {
-                            str(k): float(v) for k, v in proportions.items()
-                        },
-                        'entropy': float(stats.entropy(proportions))
-                    }
-            
-            return distribution_analysis
-        
-        except Exception as e:
-            logger.error(f"Error in distribution analysis: {str(e)}")
-            logger.error(traceback.format_exc())
-            raise AnalysisError(f"Distribution analysis failed: {str(e)}")
-
-def analyze_dataset(file_path: str = None, df: pd.DataFrame = None) -> Dict[str, Any]:
-    """
-    Analyze a dataset and return comprehensive analysis results
-    
-    Args:
-        file_path: Path to the data file
-        df: Pandas DataFrame object
-        
-    Returns:
-        Dict containing analysis results
-    """
-    try:
-        analyzer = DataAnalyzer(file_path=file_path, df=df)
-        
-        # Basic exploration
-        basic_info = analyzer.explore_data()
-        
-        # Detailed analysis
-        analysis_results = analyzer.analyze_data()
-        
-        # Outlier analysis
-        outlier_analysis = analyzer.analyze_outliers()
-        
-        # Time series analysis
-        time_series_analysis = analyzer.analyze_time_series()
-        
-        # Correlation analysis
-        correlation_analysis = analyzer.analyze_correlations()
-        
-        # Distribution analysis
-        distribution_analysis = analyzer.analyze_distributions()
-        
-        # Combine all results
-        results = {
-            'basic_info': basic_info,
-            'analysis_results': analysis_results,
-            'outlier_analysis': outlier_analysis,
-            'time_series_analysis': time_series_analysis,
-            'correlation_analysis': correlation_analysis,
-            'distribution_analysis': distribution_analysis
+        # Store cleaning results
+        self.analysis_results['cleaning'] = {
+            'original_shape': original_shape,
+            'cleaned_shape': self.df.shape,
+            'rows_removed': original_shape[0] - self.df.shape[0],
+            'columns_removed': original_shape[1] - self.df.shape[1],
+            'missing_values_after': self.df.isnull().sum().to_dict(),
+            'missing_percent_after': (self.df.isnull().sum() / len(self.df) * 100).to_dict()
         }
         
-        return convert_to_serializable(results)
+        return self.analysis_results['cleaning']
     
-    except Exception as e:
-        logger.error(f"Error in dataset analysis: {str(e)}")
-        logger.error(traceback.format_exc())
-        raise AnalysisError(f"Dataset analysis failed: {str(e)}")
-
-@data_analysis_bp.route('/analyze', methods=['POST'])
-def analyze_data():
-    try:
-        data = request.get_json()
-        file_path = data.get('file_path')
-        analysis_type = data.get('analysis_type', 'basic')
+    def engineer_features(self, target_column=None):
+        """Engineer features for analysis and modeling"""
+        if self.df is None:
+            self.load_data()
+            
+        # Set target column
+        self.target_column = target_column
         
-        # Convert relative path to absolute path
-        if not os.path.isabs(file_path):
-            file_path = os.path.join(os.getcwd(), file_path)
+        # Store original columns
+        original_columns = self.df.columns.tolist()
         
-        if not os.path.exists(file_path):
-            return jsonify({
-                'success': False,
-                'error': f'File not found: {file_path}'
-            }), 404
+        # Create date features if date columns exist
+        date_columns = []
+        for col in self.df.columns:
+            try:
+                if pd.api.types.is_string_dtype(self.df[col]):
+                    # Try to convert to datetime
+                    self.df[f'{col}_parsed'] = pd.to_datetime(self.df[col], errors='coerce')
+                    if not self.df[f'{col}_parsed'].isnull().all():
+                        date_columns.append(f'{col}_parsed')
+                        # Extract date components
+                        self.df[f'{col}_year'] = self.df[f'{col}_parsed'].dt.year
+                        self.df[f'{col}_month'] = self.df[f'{col}_parsed'].dt.month
+                        self.df[f'{col}_day'] = self.df[f'{col}_parsed'].dt.day
+                        self.df[f'{col}_dayofweek'] = self.df[f'{col}_parsed'].dt.dayofweek
+                    else:
+                        # If conversion failed for all values, drop the parsed column
+                        self.df = self.df.drop(columns=[f'{col}_parsed'])
+            except:
+                # If conversion fails, continue
+                if f'{col}_parsed' in self.df.columns:
+                    self.df = self.df.drop(columns=[f'{col}_parsed'])
+                continue
         
-        # Create analyzer instance and load data
-        analyzer = DataAnalyzer(file_path=file_path)
-        analyzer.load_data()
+        # Create interaction features for numeric columns
+        if len(self.numeric_features) > 1:
+            for i, col1 in enumerate(self.numeric_features):
+                for col2 in self.numeric_features[i+1:]:
+                    if col1 in self.df.columns and col2 in self.df.columns:
+                        self.df[f'{col1}_{col2}_interaction'] = self.df[col1] * self.df[col2]
         
-        if analysis_type == 'basic':
-            result = analyzer.explore_data()
-        elif analysis_type == 'advanced':
-            result = analyzer.analyze_data()
+        # One-hot encode categorical features with low cardinality
+        for col in self.categorical_features:
+            if col in self.df.columns and self.df[col].nunique() < 10:  # Only encode if fewer than 10 categories
+                dummies = pd.get_dummies(self.df[col], prefix=col, drop_first=True)
+                self.df = pd.concat([self.df, dummies], axis=1)
+        
+        # Update numeric and categorical features
+        self.numeric_features = self.df.select_dtypes(include=['int64', 'float64']).columns.tolist()
+        self.categorical_features = self.df.select_dtypes(include=['object', 'category', 'bool']).columns.tolist()
+        
+        # Store feature engineering results
+        self.analysis_results['feature_engineering'] = {
+            'original_columns': original_columns,
+            'new_columns': [col for col in self.df.columns if col not in original_columns],
+            'date_columns_processed': date_columns,
+            'numeric_features': self.numeric_features,
+            'categorical_features': self.categorical_features
+        }
+        
+        return self.analysis_results['feature_engineering']
+    
+    def analyze_data(self):
+        """Perform exploratory data analysis"""
+        if self.df is None:
+            self.load_data()
+            
+        # Correlation analysis for numeric features
+        if len(self.numeric_features) > 1:
+            correlation_matrix = self.df[self.numeric_features].corr().round(2).to_dict()
+            
+            # Find top correlations
+            corr_df = self.df[self.numeric_features].corr().unstack().sort_values(ascending=False)
+            # Remove self-correlations
+            corr_df = corr_df[corr_df < 1.0]
+            top_correlations = corr_df.head(10).to_dict()
         else:
-            return jsonify({
-                'success': False,
-                'error': 'Invalid analysis type'
-            }), 400
+            correlation_matrix = {}
+            top_correlations = {}
         
-        return jsonify({
-            'success': True,
-            'analysis': result,
-            'message': 'Analysis completed successfully'
-        })
+        # Statistical tests and distributions
+        distributions = {}
+        for col in self.numeric_features:
+            if col in self.df.columns:
+                distributions[col] = {
+                    'mean': float(self.df[col].mean()),
+                    'median': float(self.df[col].median()),
+                    'std': float(self.df[col].std()),
+                    'min': float(self.df[col].min()),
+                    'max': float(self.df[col].max()),
+                    'skew': float(self.df[col].skew()),
+                    'kurtosis': float(self.df[col].kurtosis())
+                }
         
-    except Exception as e:
-        logger.error(f"Error in analyze_data: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-def perform_basic_analysis(df):
-    """Perform basic statistical analysis on the dataset"""
-    try:
-        # Basic statistics
-        numeric_cols = df.select_dtypes(include=[np.number]).columns
-        basic_stats = df[numeric_cols].describe().to_dict()
+        # Categorical analysis
+        categorical_analysis = {}
+        for col in self.categorical_features:
+            if col in self.df.columns:
+                value_counts = self.df[col].value_counts().head(10).to_dict()
+                categorical_analysis[col] = {
+                    'unique_values': self.df[col].nunique(),
+                    'top_values': value_counts
+                }
         
-        # Missing values analysis
-        missing_values = df.isnull().sum().to_dict()
-        
-        # Data types
-        data_types = df.dtypes.astype(str).to_dict()
-        
-        # Correlation matrix for numeric columns
-        correlation = df[numeric_cols].corr().to_dict() if len(numeric_cols) > 0 else {}
-        
-        return {
-            'basic_stats': basic_stats,
-            'missing_values': missing_values,
-            'data_types': data_types,
-            'correlation': correlation
-        }
-        
-    except Exception as e:
-        logger.error(f"Error in perform_basic_analysis: {str(e)}")
-        raise
-
-def perform_advanced_analysis(df):
-    """Perform advanced statistical analysis on the dataset"""
-    try:
-        # Get numeric columns
-        numeric_cols = df.select_dtypes(include=[np.number]).columns
-        
-        if len(numeric_cols) == 0:
-            return {
-                'error': 'No numeric columns found for advanced analysis'
-            }
-        
-        # Standardize numeric data
-        scaler = StandardScaler()
-        scaled_data = scaler.fit_transform(df[numeric_cols])
-        
-        # PCA Analysis
-        pca = PCA()
-        pca_result = pca.fit_transform(scaled_data)
-        
-        # Explained variance ratio
-        explained_variance = pca.explained_variance_ratio_.tolist()
-        
-        # Clustering Analysis (K-means)
-        n_clusters_range = range(2, min(6, len(df)))
-        silhouette_scores = []
-        
-        for n_clusters in n_clusters_range:
-            kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-            cluster_labels = kmeans.fit_predict(scaled_data)
-            silhouette_avg = silhouette_score(scaled_data, cluster_labels)
-            silhouette_scores.append(silhouette_avg)
-        
-        optimal_clusters = n_clusters_range[np.argmax(silhouette_scores)]
-        
-        # Perform final clustering with optimal number of clusters
-        final_kmeans = KMeans(n_clusters=optimal_clusters, random_state=42)
-        cluster_labels = final_kmeans.fit_predict(scaled_data)
-        
-        return {
-            'pca_analysis': {
-                'explained_variance_ratio': explained_variance,
-                'cumulative_variance_ratio': np.cumsum(explained_variance).tolist(),
-                'n_components': len(explained_variance)
-            },
-            'clustering_analysis': {
-                'optimal_clusters': optimal_clusters,
-                'silhouette_scores': silhouette_scores,
-                'cluster_labels': cluster_labels.tolist(),
-                'cluster_centers': final_kmeans.cluster_centers_.tolist()
-            }
-        }
-        
-    except Exception as e:
-        logger.error(f"Error in perform_advanced_analysis: {str(e)}")
-        raise
-
-@data_analysis_bp.route('/outliers', methods=['POST'])
-def analyze_outliers():
-    try:
-        data = request.get_json()
-        file_path = data.get('file_path')
-        columns = data.get('columns')
-        
-        df = pd.read_csv(file_path)
-        
-        if not columns:
-            columns = df.select_dtypes(include=[np.number]).columns.tolist()
-        
-        outlier_results = {}
-        
-        for column in columns:
-            if column not in df.columns or df[column].dtype not in ['int64', 'float64']:
-                continue
+        # Target variable analysis if specified
+        target_analysis = {}
+        if self.target_column and self.target_column in self.df.columns:
+            if self.target_column in self.numeric_features:
+                target_analysis = {
+                    'mean': float(self.df[self.target_column].mean()),
+                    'median': float(self.df[self.target_column].median()),
+                    'std': float(self.df[self.target_column].std()),
+                    'min': float(self.df[self.target_column].min()),
+                    'max': float(self.df[self.target_column].max()),
+                    'skew': float(self.df[self.target_column].skew()),
+                    'kurtosis': float(self.df[self.target_column].kurtosis())
+                }
                 
-            # Calculate Z-scores
-            z_scores = np.abs((df[column] - df[column].mean()) / df[column].std())
-            z_score_outliers = df[z_scores > 3].index.tolist()
+                # Relationship with other features
+                if len(self.numeric_features) > 1:
+                    correlations_with_target = self.df[self.numeric_features].corr()[self.target_column].sort_values(ascending=False).to_dict()
+                    target_analysis['correlations'] = correlations_with_target
             
-            # Calculate IQR bounds
-            Q1 = df[column].quantile(0.25)
-            Q3 = df[column].quantile(0.75)
-            IQR = Q3 - Q1
-            lower_bound = Q1 - 1.5 * IQR
-            upper_bound = Q3 + 1.5 * IQR
-            iqr_outliers = df[(df[column] < lower_bound) | (df[column] > upper_bound)].index.tolist()
-            
-            outlier_results[column] = {
-                'z_score': {
-                    'outliers': z_score_outliers,
-                    'count': len(z_score_outliers)
-                },
-                'iqr': {
-                    'outliers': iqr_outliers,
-                    'count': len(iqr_outliers),
-                    'bounds': {
-                        'lower': float(lower_bound),
-                        'upper': float(upper_bound)
-                    }
+            elif self.target_column in self.categorical_features:
+                value_counts = self.df[self.target_column].value_counts().to_dict()
+                target_analysis = {
+                    'unique_values': self.df[self.target_column].nunique(),
+                    'value_counts': value_counts
                 }
-            }
         
-        return jsonify({
-            'success': True,
-            'outliers': outlier_results,
-            'message': 'Outlier analysis completed successfully'
-        })
+        # Store analysis results
+        self.analysis_results['data_analysis'] = {
+            'correlation_matrix': correlation_matrix,
+            'top_correlations': top_correlations,
+            'distributions': distributions,
+            'categorical_analysis': categorical_analysis,
+            'target_analysis': target_analysis
+        }
         
-    except Exception as e:
-        logger.error(f"Error in analyze_outliers: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return self.analysis_results['data_analysis']
+    
+    def create_visualizations(self):
+        """Create visualizations for the dataset"""
+        if self.df is None:
+            self.load_data()
+            
+        visualizations = {}
+        
+        # Distribution plots for numeric features
+        for col in self.numeric_features[:10]:  # Limit to first 10 features
+            if col in self.df.columns:
+                fig = px.histogram(self.df, x=col, marginal="box", title=f"Distribution of {col}")
+                visualizations[f'dist_{col}'] = fig.to_json()
+        
+        # Correlation heatmap
+        if len(self.numeric_features) > 1:
+            fig = px.imshow(
+                self.df[self.numeric_features].corr(),
+                title="Correlation Heatmap",
+                color_continuous_scale='RdBu_r',
+                labels=dict(color="Correlation")
+            )
+            visualizations['correlation_heatmap'] = fig.to_json()
+        
+        # Categorical feature plots
+        for col in self.categorical_features[:5]:  # Limit to first 5 features
+            if col in self.df.columns and self.df[col].nunique() < 15:  # Only plot if fewer than 15 categories
+                fig = px.bar(
+                    self.df[col].value_counts().reset_index(),
+                    x='index',
+                    y=col,
+                    title=f"Count of {col}"
+                )
+                visualizations[f'cat_{col}'] = fig.to_json()
+        
+        # Scatter plots for numeric features vs target (if target is specified)
+        if self.target_column and self.target_column in self.numeric_features:
+            for col in self.numeric_features[:5]:  # Limit to first 5 features
+                if col != self.target_column and col in self.df.columns:
+                    fig = px.scatter(
+                        self.df,
+                        x=col,
+                        y=self.target_column,
+                        title=f"{col} vs {self.target_column}",
+                        trendline="ols"
+                    )
+                    visualizations[f'scatter_{col}_vs_{self.target_column}'] = fig.to_json()
+        
+        # Pair plot for top correlated features
+        if len(self.numeric_features) > 2:
+            # Get top 4 correlated features with target or among themselves
+            if self.target_column and self.target_column in self.numeric_features:
+                corr_with_target = abs(self.df[self.numeric_features].corr()[self.target_column]).sort_values(ascending=False)
+                top_features = [self.target_column] + corr_with_target[corr_with_target.index != self.target_column].head(3).index.tolist()
+            else:
+                # If no target, get features with highest average correlation
+                corr_matrix = self.df[self.numeric_features].corr().abs()
+                avg_corr = corr_matrix.mean().sort_values(ascending=False)
+                top_features = avg_corr.head(4).index.tolist()
+            
+            fig = px.scatter_matrix(
+                self.df,
+                dimensions=top_features,
+                title="Pair Plot of Top Features"
+            )
+            visualizations['pair_plot'] = fig.to_json()
+        
+        # Box plots for categorical vs numeric
+        if self.categorical_features and self.numeric_features:
+            for cat_col in self.categorical_features[:2]:  # Limit to first 2 categorical features
+                if cat_col in self.df.columns and self.df[cat_col].nunique() < 10:
+                    for num_col in self.numeric_features[:2]:  # Limit to first 2 numeric features
+                        if num_col in self.df.columns:
+                            fig = px.box(
+                                self.df,
+                                x=cat_col,
+                                y=num_col,
+                                title=f"{num_col} by {cat_col}"
+                            )
+                            visualizations[f'box_{cat_col}_{num_col}'] = fig.to_json()
+        
+        # Store visualizations
+        self.visualizations = visualizations
+        return visualizations
+    
+    def train_model(self, model_type='linear'):
+        """Train a predictive model if target column is specified"""
+        if self.df is None:
+            self.load_data()
+            
+        if not self.target_column or self.target_column not in self.df.columns:
+            return {"error": "Target column not specified or not found in dataframe"}
+            
+        # Prepare data for modeling
+        X = self.df.drop(columns=[self.target_column])
+        y = self.df[self.target_column]
+        
+        # Handle categorical features
+        categorical_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
+        numeric_cols = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
+        
+        # Create preprocessing pipeline
+        numeric_transformer = Pipeline(steps=[
+            ('imputer', SimpleImputer(strategy='median')),
+            ('scaler', StandardScaler())
+        ])
+        
+        categorical_transformer = Pipeline(steps=[
+            ('imputer', SimpleImputer(strategy='most_frequent')),
+            ('onehot', OneHotEncoder(handle_unknown='ignore'))
+        ])
+        
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ('num', numeric_transformer, numeric_cols),
+                ('cat', categorical_transformer, categorical_cols)
+            ]
+        )
+        
+        # Split data
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        
+        # Select model
+        if model_type == 'linear':
+            model = LinearRegression()
+        elif model_type == 'random_forest':
+            model = RandomForestRegressor(n_estimators=100, random_state=42)
+        else:
+            return {"error": f"Unsupported model type: {model_type}"}
+            
+        # Create and train pipeline
+        self.preprocessing_pipeline = preprocessor
+        pipeline = Pipeline(steps=[
+            ('preprocessor', preprocessor),
+            ('model', model)
+        ])
+        
+        pipeline.fit(X_train, y_train)
+        self.model = pipeline
+        
+        # Evaluate model
+        y_pred = pipeline.predict(X_test)
+        mse = mean_squared_error(y_test, y_pred)
+        r2 = r2_score(y_test, y_pred)
+        
+        # Feature importance (for random forest)
+        feature_importance = {}
+        if model_type == 'random_forest':
+            # Get feature names after preprocessing
+            feature_names = []
+            for name, trans, cols in preprocessor.transformers_:
+                if name == 'cat':
+                    # For categorical features, get the one-hot encoded feature names
+                    for col in cols:
+                        categories = trans.named_steps['onehot'].categories_[cols.index(col)]
+                        feature_names.extend([f"{col}_{cat}" for cat in categories])
+                else:
+                    # For numeric features, use the column names
+                    feature_names.extend(cols)
+            
+            # Get feature importances
+            importances = pipeline.named_steps['model'].feature_importances_
+            
+            # Create a dictionary of feature importances
+            if len(feature_names) == len(importances):
+                feature_importance = dict(zip(feature_names, importances))
+                feature_importance = dict(sorted(feature_importance.items(), key=lambda x: x[1], reverse=True))
+        
+        # Create residual plot
+        fig = px.scatter(
+            x=y_test,
+            y=y_pred - y_test,
+            labels={'x': 'Actual', 'y': 'Residuals'},
+            title='Residual Plot'
+        )
+        fig.add_hline(y=0, line_dash="dash", line_color="red")
+        residual_plot = fig.to_json()
+        
+        # Create actual vs predicted plot
+        fig = px.scatter(
+            x=y_test,
+            y=y_pred,
+            labels={'x': 'Actual', 'y': 'Predicted'},
+            title='Actual vs Predicted'
+        )
+        fig.add_line(x=[y_test.min(), y_test.max()], y=[y_test.min(), y_test.max()], line_dash="dash", line_color="red")
+        actual_vs_predicted = fig.to_json()
+        
+        # Store model results
+        self.analysis_results['model'] = {
+            'model_type': model_type,
+            'mse': mse,
+            'r2': r2,
+            'feature_importance': feature_importance,
+            'residual_plot': residual_plot,
+            'actual_vs_predicted': actual_vs_predicted
+        }
+        
+        return self.analysis_results['model']
+    
+    def generate_dashboard_data(self):
+        """Generate data for an interactive dashboard"""
+        if not self.analysis_results:
+            self.explore_data()
+            self.analyze_data()
+            self.create_visualizations()
+            
+        # Combine all results into a dashboard-friendly format
+        dashboard_data = {
+            'dataset_info': {
+                'name': os.path.basename(self.file_path) if self.file_path else 'Uploaded Dataset',
+                'shape': self.df.shape,
+                'columns': self.df.columns.tolist(),
+                'numeric_features': self.numeric_features,
+                'categorical_features': self.categorical_features,
+                'target_column': self.target_column
+            },
+            'summary': self.analysis_results.get('basic_info', {}),
+            'cleaning': self.analysis_results.get('cleaning', {}),
+            'feature_engineering': self.analysis_results.get('feature_engineering', {}),
+            'analysis': self.analysis_results.get('data_analysis', {}),
+            'visualizations': self.visualizations,
+            'model': self.analysis_results.get('model', {})
+        }
+        
+        return dashboard_data
+    
+    def generate_report(self):
+        """Generate a summary report of the analysis"""
+        if not self.analysis_results:
+            self.explore_data()
+            self.analyze_data()
+            
+        # Create a report with key insights
+        report = {
+            'title': f"Data Analysis Report - {datetime.now().strftime('%Y-%m-%d')}",
+            'dataset_info': {
+                'name': os.path.basename(self.file_path) if self.file_path else 'Uploaded Dataset',
+                'rows': self.df.shape[0],
+                'columns': self.df.shape[1],
+                'size_mb': self.df.memory_usage(deep=True).sum() / (1024 * 1024)
+            },
+            'key_insights': []
+        }
+        
+        # Add insights about data quality
+        missing_data = self.analysis_results.get('basic_info', {}).get('missing_percent', {})
+        if missing_data:
+            high_missing = {k: v for k, v in missing_data.items() if v > 10}
+            if high_missing:
+                report['key_insights'].append({
+                    'title': 'Data Quality Issues',
+                    'description': f"Found {len(high_missing)} columns with >10% missing values: {', '.join(high_missing.keys())}"
+                })
+        
+        # Add insights about distributions
+        distributions = self.analysis_results.get('data_analysis', {}).get('distributions', {})
+        if distributions:
+            skewed_features = {k: v['skew'] for k, v in distributions.items() if abs(v['skew']) > 1}
+            if skewed_features:
+                report['key_insights'].append({
+                    'title': 'Skewed Distributions',
+                    'description': f"Found {len(skewed_features)} features with significant skew: {', '.join(skewed_features.keys())}"
+                })
+        
+        # Add insights about correlations
+        correlations = self.analysis_results.get('data_analysis', {}).get('top_correlations', {})
+        if correlations:
+            top_corr = list(correlations.items())[:5]
+            report['key_insights'].append({
+                'title': 'Strong Correlations',
+                'description': f"Top correlation: {top_corr[0][0]} with value {top_corr[0][1]:.2f}"
+            })
+        
+        # Add insights about target variable
+        target_analysis = self.analysis_results.get('data_analysis', {}).get('target_analysis', {})
+        if target_analysis and self.target_column:
+            if 'correlations' in target_analysis:
+                top_predictors = list(target_analysis['correlations'].items())[:3]
+                report['key_insights'].append({
+                    'title': 'Top Predictors',
+                    'description': f"Top features correlated with {self.target_column}: " + 
+                                  ", ".join([f"{k} ({v:.2f})" for k, v in top_predictors if k != self.target_column])
+                })
+        
+        # Add model insights if available
+        model_results = self.analysis_results.get('model', {})
+        if model_results and 'r2' in model_results:
+            report['key_insights'].append({
+                'title': 'Model Performance',
+                'description': f"The {model_results.get('model_type', 'predictive')} model achieved an R² of {model_results['r2']:.2f}"
+            })
+            
+            if 'feature_importance' in model_results:
+                top_features = list(model_results['feature_importance'].items())[:3]
+                report['key_insights'].append({
+                    'title': 'Important Features',
+                    'description': f"Top important features: " + 
+                                  ", ".join([f"{k} ({v:.2f})" for k, v in top_features])
+                })
+        
+        return report
 
-@data_analysis_bp.route('/time-series', methods=['POST'])
-def analyze_time_series():
-    try:
-        data = request.get_json()
-        file_path = data.get('file_path')
-        time_column = data.get('time_column')
-        target_columns = data.get('target_columns')
-        
-        df = pd.read_csv(file_path)
-        
-        # Convert time column to datetime
-        df[time_column] = pd.to_datetime(df[time_column])
-        
-        if not target_columns:
-            target_columns = df.select_dtypes(include=[np.number]).columns.tolist()
-            target_columns.remove(time_column) if time_column in target_columns else None
-        
-        time_series_results = {}
-        
-        for column in target_columns:
-            if column not in df.columns or df[column].dtype not in ['int64', 'float64']:
-                continue
-            
-            # Basic time series statistics
-            stats = {
-                'start_date': df[time_column].min().isoformat(),
-                'end_date': df[time_column].max().isoformat(),
-                'duration_days': (df[time_column].max() - df[time_column].min()).days,
-                'frequency': pd.infer_freq(df[time_column]),
-                'statistics': {
-                    'mean': float(df[column].mean()),
-                    'std': float(df[column].std()),
-                    'min': float(df[column].min()),
-                    'max': float(df[column].max()),
-                    'first_value': float(df[column].iloc[0]),
-                    'last_value': float(df[column].iloc[-1]),
-                    'change': float(df[column].iloc[-1] - df[column].iloc[0]),
-                    'pct_change': float((df[column].iloc[-1] - df[column].iloc[0]) / df[column].iloc[0] * 100)
-                }
-            }
-            
-            time_series_results[column] = stats
-        
-        return jsonify({
-            'success': True,
-            'time_series_analysis': time_series_results,
-            'message': 'Time series analysis completed successfully'
-        })
-        
-    except Exception as e:
-        logger.error(f"Error in analyze_time_series: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500 
+def analyze_dataset(file_path, target_column=None, model_type='linear'):
+    """Analyze a dataset and return results"""
+    analyzer = DataAnalyzer(file_path=file_path)
+    analyzer.load_data()
+    analyzer.explore_data()
+    analyzer.clean_data()
+    analyzer.engineer_features(target_column=target_column)
+    analyzer.analyze_data()
+    analyzer.create_visualizations()
+    
+    if target_column:
+        analyzer.train_model(model_type=model_type)
+    
+    dashboard_data = analyzer.generate_dashboard_data()
+    report = analyzer.generate_report()
+    
+    return {
+        'dashboard_data': dashboard_data,
+        'report': report
+    } 

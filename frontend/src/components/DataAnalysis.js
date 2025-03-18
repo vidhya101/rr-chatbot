@@ -70,7 +70,7 @@ const DataAnalysis = ({ darkMode }) => {
   const [previewData, setPreviewData] = useState(null);
   const [columns, setColumns] = useState([]);
   const [targetColumn, setTargetColumn] = useState('');
-  const [modelType, setModelType] = useState('random_forest');
+  const [modelType, setModelType] = useState('linear');
   const [analysisResults, setAnalysisResults] = useState(null);
   const [dashboardData, setDashboardData] = useState(null);
   const [activeTab, setActiveTab] = useState(0);
@@ -101,6 +101,7 @@ const DataAnalysis = ({ darkMode }) => {
     
     setLoading(true);
     setError('');
+    setSuccess('');
     
     const formData = new FormData();
     formData.append('file', file);
@@ -112,18 +113,17 @@ const DataAnalysis = ({ darkMode }) => {
         }
       });
       
+      setSuccess('File uploaded successfully');
       setFilePath(response.data.file_path);
       
-      // Show success message
-      setSuccess('File uploaded successfully');
-      setTimeout(() => setSuccess(''), 3000);
-      
-      // Generate preview
+      // Preview the file
       await handlePreview(response.data.file_path);
       
+      // Move to the next tab
+      setActiveTab(1);
     } catch (err) {
+      setError(err.response?.data?.error || 'Error uploading file');
       console.error('Upload error:', err);
-      setError(err.response?.data?.error || 'Error uploading file: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -136,38 +136,14 @@ const DataAnalysis = ({ darkMode }) => {
     
     try {
       const response = await axios.post('/api/files/preview', {
-        file_path: path
+        file_path: path || filePath
       });
       
-      setPreviewData(response.data);
-      setColumns(response.data.columns || []);
-      
-      // If there are columns, set the first numeric column as default target
-      if (response.data.columns && response.data.columns.length > 0) {
-        // Try to find a numeric column
-        const numericColumns = response.data.columns.filter(col => 
-          response.data.data_types[col] && 
-          (response.data.data_types[col].includes('int') || 
-           response.data.data_types[col].includes('float'))
-        );
-        
-        if (numericColumns.length > 0) {
-          setTargetColumn(numericColumns[0]);
-        } else {
-          setTargetColumn(response.data.columns[0]);
-        }
-      }
-      
-      // Move to the preview tab
-      setActiveTab(1);
-      
-      // Show success message
-      setSuccess('File preview generated successfully');
-      setTimeout(() => setSuccess(''), 3000);
-      
+      setPreviewData(response.data.preview_data);
+      setColumns(response.data.columns);
     } catch (err) {
+      setError(err.response?.data?.error || 'Error previewing file');
       console.error('Preview error:', err);
-      setError(err.response?.data?.error || 'Error generating preview: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -190,39 +166,27 @@ const DataAnalysis = ({ darkMode }) => {
         model_type: modelType
       });
       
-      if (response.data && response.data.results) {
-        setAnalysisResults(response.data.results);
-        
-        // Check if dashboard data is included in the response
-        if (response.data.results.dashboard_data) {
-          setDashboardData(response.data.results.dashboard_data);
-          
-          // Parse visualizations
-          if (response.data.results.dashboard_data.visualizations) {
-            const parsedVisualizations = {};
-            Object.entries(response.data.results.dashboard_data.visualizations).forEach(([key, value]) => {
-              try {
-                parsedVisualizations[key] = typeof value === 'string' ? JSON.parse(value) : value;
-              } catch (e) {
-                console.error(`Error parsing visualization ${key}:`, e);
-              }
-            });
-            setVisualizations(parsedVisualizations);
+      setAnalysisResults(response.data.results);
+      setDashboardData(response.data.results.dashboard_data);
+      
+      // Parse visualizations
+      if (response.data.results.dashboard_data.visualizations) {
+        const parsedVisualizations = {};
+        Object.entries(response.data.results.dashboard_data.visualizations).forEach(([key, value]) => {
+          try {
+            parsedVisualizations[key] = JSON.parse(value);
+          } catch (e) {
+            console.error(`Error parsing visualization ${key}:`, e);
           }
-        }
-        
-        // Move to the results tab
-        setActiveTab(2);
-        
-        // Show success message
-        setSuccess('Analysis completed successfully');
-        setTimeout(() => setSuccess(''), 3000);
-      } else {
-        throw new Error('Invalid response format from server');
+        });
+        setVisualizations(parsedVisualizations);
       }
+      
+      // Move to the results tab
+      setActiveTab(2);
     } catch (err) {
+      setError(err.response?.data?.error || 'Error analyzing file');
       console.error('Analysis error:', err);
-      setError(err.response?.data?.error || 'Error analyzing file: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -244,34 +208,26 @@ const DataAnalysis = ({ darkMode }) => {
         target_column: targetColumn
       });
       
-      if (response.data && response.data.dashboard_data) {
-        setDashboardData(response.data.dashboard_data);
-        
-        // Parse visualizations
-        if (response.data.dashboard_data.visualizations) {
-          const parsedVisualizations = {};
-          Object.entries(response.data.dashboard_data.visualizations).forEach(([key, value]) => {
-            try {
-              parsedVisualizations[key] = typeof value === 'string' ? JSON.parse(value) : value;
-            } catch (e) {
-              console.error(`Error parsing visualization ${key}:`, e);
-            }
-          });
-          setVisualizations(parsedVisualizations);
-        }
-        
-        // Move to the dashboard tab
-        setActiveTab(3);
-        
-        // Show success message
-        setSuccess('Dashboard created successfully');
-        setTimeout(() => setSuccess(''), 3000);
-      } else {
-        throw new Error('Invalid response format from server');
+      setDashboardData(response.data.dashboard_data);
+      
+      // Parse visualizations
+      if (response.data.dashboard_data.visualizations) {
+        const parsedVisualizations = {};
+        Object.entries(response.data.dashboard_data.visualizations).forEach(([key, value]) => {
+          try {
+            parsedVisualizations[key] = JSON.parse(value);
+          } catch (e) {
+            console.error(`Error parsing visualization ${key}:`, e);
+          }
+        });
+        setVisualizations(parsedVisualizations);
       }
+      
+      // Move to the dashboard tab
+      setActiveTab(3);
     } catch (err) {
-      console.error('Dashboard creation error:', err);
-      setError(err.response?.data?.error || 'Error creating dashboard: ' + err.message);
+      setError(err.response?.data?.error || 'Error creating dashboard');
+      console.error('Dashboard error:', err);
     } finally {
       setLoading(false);
     }
@@ -280,56 +236,42 @@ const DataAnalysis = ({ darkMode }) => {
   // Render visualizations
   const renderVisualizations = () => {
     if (!visualizations || Object.keys(visualizations).length === 0) {
-      return <Alert severity="info" sx={{ mt: 3 }}>No visualizations available</Alert>;
+      return <Alert severity="info">No visualizations available</Alert>;
     }
     
     return (
-      <div className="visualizations-section">
-        <Typography variant="h6" gutterBottom sx={{ mt: 4, mb: 2 }}>Visualizations</Typography>
-        
-        <Grid container spacing={3}>
-          {Object.entries(visualizations).map(([key, plotData], index) => (
-            <Grid item xs={12} md={6} key={index}>
-              <div className="visualization-container">
-                <Typography variant="subtitle1" className="visualization-title">
-                  {plotData.layout?.title?.text || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                </Typography>
-                <Plot
-                  data={plotData.data || []}
-                  layout={{
-                    ...plotData.layout,
-                    autosize: true,
-                    height: 400,
-                    margin: { l: 50, r: 50, b: 50, t: 50, pad: 4 },
-                    paper_bgcolor: darkMode ? '#1e1e1e' : '#fff',
-                    plot_bgcolor: darkMode ? '#1e1e1e' : '#fff',
-                    font: {
-                      color: darkMode ? '#f5f5f5' : '#333'
-                    }
-                  }}
-                  config={{ responsive: true }}
-                  style={{ width: '100%', height: '100%' }}
-                />
-              </div>
-            </Grid>
-          ))}
-        </Grid>
+      <div className="visualizations-container">
+        {Object.entries(visualizations).map(([key, plotData]) => (
+          <Paper key={key} elevation={3} sx={{ mb: 3, p: 2 }}>
+            <Typography variant="h6" gutterBottom>
+              {key.replace(/_/g, ' ').replace(/^dist_|^cat_|^scatter_/g, '')}
+            </Typography>
+            <Plot
+              data={plotData.data}
+              layout={{
+                ...plotData.layout,
+                autosize: true,
+                height: 400,
+                margin: { l: 50, r: 50, b: 100, t: 100, pad: 4 }
+              }}
+              config={{ responsive: true }}
+              style={{ width: '100%', height: '100%' }}
+            />
+          </Paper>
+        ))}
       </div>
     );
   };
   
   // Render data preview
   const renderPreview = () => {
-    if (!previewData) {
+    if (!previewData || previewData.length === 0) {
       return <Alert severity="info">No preview data available</Alert>;
     }
     
-    const previewRows = previewData.preview_data || [];
-    const columns = previewData.columns || [];
-    
     return (
-      <TableContainer component={Paper}>
-        <Table size="small">
+      <TableContainer component={Paper} sx={{ maxHeight: 400 }}>
+        <Table stickyHeader aria-label="data preview table">
           <TableHead>
             <TableRow>
               {columns.map((column, index) => (
@@ -338,10 +280,10 @@ const DataAnalysis = ({ darkMode }) => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {previewRows.map((row, rowIndex) => (
+            {previewData.map((row, rowIndex) => (
               <TableRow key={rowIndex}>
                 {columns.map((column, colIndex) => (
-                  <TableCell key={colIndex}>{row[column]}</TableCell>
+                  <TableCell key={colIndex}>{row[column]?.toString() || ''}</TableCell>
                 ))}
               </TableRow>
             ))}
@@ -413,52 +355,25 @@ const DataAnalysis = ({ darkMode }) => {
         <Typography variant="h5" gutterBottom>Interactive Dashboard</Typography>
         
         <Grid container spacing={3}>
-          <Grid item xs={12} md={4}>
-            <Card className="dashboard-card">
+          <Grid item md={4}>
+            <Card sx={{ mb: 3 }}>
               <CardHeader title="Dataset Summary" />
               <CardContent>
-                <Typography><strong>Name:</strong> {dashboardData.dataset_info?.name || fileName}</Typography>
-                <Typography><strong>Rows:</strong> {dashboardData.dataset_info?.rows || 'N/A'}</Typography>
-                <Typography><strong>Columns:</strong> {dashboardData.dataset_info?.columns || 'N/A'}</Typography>
-                <Typography><strong>Size:</strong> {dashboardData.dataset_info?.size_mb?.toFixed(2) || 'N/A'} MB</Typography>
+                <Typography><strong>Name:</strong> {dashboardData.dataset_info.name}</Typography>
+                <Typography><strong>Rows:</strong> {dashboardData.dataset_info.shape[0]}</Typography>
+                <Typography><strong>Columns:</strong> {dashboardData.dataset_info.shape[1]}</Typography>
+                <Typography><strong>Numeric Features:</strong> {dashboardData.dataset_info.numeric_features.length}</Typography>
+                <Typography><strong>Categorical Features:</strong> {dashboardData.dataset_info.categorical_features.length}</Typography>
               </CardContent>
             </Card>
           </Grid>
           
-          {dashboardData.model && (
-            <Grid item xs={12} md={4}>
-              <Card className="dashboard-card">
-                <CardHeader title="Model Performance" />
-                <CardContent>
-                  <div className="dashboard-metric">
-                    <Typography className="dashboard-metric-label">Model Type:</Typography>
-                    <Typography className="dashboard-metric-value">{dashboardData.model.model_type}</Typography>
-                  </div>
-                  <div className="dashboard-metric">
-                    <Typography className="dashboard-metric-label">R² Score:</Typography>
-                    <Typography className="dashboard-metric-value">{dashboardData.model.r2?.toFixed(4) || 'N/A'}</Typography>
-                  </div>
-                  <div className="dashboard-metric">
-                    <Typography className="dashboard-metric-label">Mean Squared Error:</Typography>
-                    <Typography className="dashboard-metric-value">{dashboardData.model.mse?.toFixed(4) || 'N/A'}</Typography>
-                  </div>
-                </CardContent>
-              </Card>
-            </Grid>
-          )}
-          
-          <Grid item xs={12} md={4}>
-            <Card className="dashboard-card">
-              <CardHeader title="Key Statistics" />
+          <Grid item md={8}>
+            <Card sx={{ mb: 3 }}>
+              <CardHeader title="Data Quality" />
               <CardContent>
-                {dashboardData.statistics && Object.entries(dashboardData.statistics).map(([key, value], index) => (
-                  <div key={index} className="dashboard-metric">
-                    <Typography className="dashboard-metric-label">{key}:</Typography>
-                    <Typography className="dashboard-metric-value">
-                      {typeof value === 'number' ? value.toFixed(2) : value}
-                    </Typography>
-                  </div>
-                ))}
+                <Typography><strong>Missing Values:</strong> {Object.keys(dashboardData.summary.missing_values).filter(k => dashboardData.summary.missing_values[k] > 0).length} columns have missing values</Typography>
+                <Typography><strong>Data Types:</strong> {Object.keys(dashboardData.summary.data_types).map(k => `${k} (${dashboardData.summary.data_types[k]})`).join(', ')}</Typography>
               </CardContent>
             </Card>
           </Grid>
@@ -470,20 +385,13 @@ const DataAnalysis = ({ darkMode }) => {
   };
   
   return (
-    <Container maxWidth="lg" className={`data-analysis-container ${darkMode ? 'dark-mode' : ''}`}>
-      <Typography variant="h4" gutterBottom>Data Analysis Dashboard</Typography>
+    <Container className="data-analysis-container">
+      <Typography variant="h4" align="center" gutterBottom>
+        Data Analysis Dashboard
+      </Typography>
       
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
-          {error}
-        </Alert>
-      )}
-      
-      {success && (
-        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>
-          {success}
-        </Alert>
-      )}
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
       
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs 

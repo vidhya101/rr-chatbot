@@ -5,8 +5,7 @@ from services.model_service import (
     get_model_by_id, 
     check_ollama_status, 
     pull_ollama_model,
-    update_model_parameters,
-    model_service
+    update_model_parameters
 )
 from utils.db_utils import log_info, log_error
 
@@ -15,107 +14,49 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Create blueprint
-model_bp = Blueprint('model', __name__)
+model_routes = Blueprint('model_routes', __name__)
 
-@model_bp.route('/models', methods=['GET'])
+@model_routes.route('/models', methods=['GET'])
 def list_models():
     """List all available models"""
     try:
-        models = model_service.get_available_models()
-        return jsonify({
-            'success': True,
-            'models': models,
-            'current_model': model_service.get_current_model()
-        })
-    except Exception as e:
-        logger.error(f"Error listing models: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-@model_bp.route('/models/refresh', methods=['POST'])
-def refresh_models():
-    """Refresh available models"""
-    try:
-        success = model_service.refresh_models()
-        return jsonify({
-            'success': success,
-            'models': model_service.get_available_models() if success else []
-        })
-    except Exception as e:
-        logger.error(f"Error refreshing models: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-@model_bp.route('/models/select', methods=['POST'])
-def select_model():
-    """Select a model to use"""
-    try:
-        data = request.get_json()
-        if not data or 'model_name' not in data:
-            return jsonify({
-                'success': False,
-                'error': 'Model name not provided'
-            }), 400
-
-        model_name = data['model_name']
-        success = model_service.set_current_model(model_name)
+        # Get force refresh parameter
+        force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
         
-        return jsonify({
-            'success': success,
-            'current_model': model_service.get_current_model()
-        })
-    except Exception as e:
-        logger.error(f"Error selecting model: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-@model_bp.route('/api-keys', methods=['POST'])
-def update_api_key():
-    """Update API key for a provider"""
-    try:
-        data = request.get_json()
-        if not data or 'provider' not in data or 'api_key' not in data:
-            return jsonify({
-                'success': False,
-                'error': 'Provider and API key required'
-            }), 400
-
-        provider = data['provider']
-        api_key = data['api_key']
+        # Get models
+        models = get_available_models(force_refresh=force_refresh)
         
-        model_service.update_api_key(provider, api_key)
+        # Log request
+        log_info(
+            user_id=request.headers.get('X-User-ID', 'anonymous'),
+            source='model_routes.list_models',
+            message='Listed models',
+            details={'count': len(models), 'force_refresh': force_refresh}
+        )
         
         return jsonify({
             'success': True,
-            'message': f'API key updated for {provider}'
-        })
+            'models': models
+        }), 200
+    
     except Exception as e:
-        logger.error(f"Error updating API key: {str(e)}")
+        error_message = f"Error listing models: {str(e)}"
+        logger.error(error_message)
+        
+        # Log error
+        log_error(
+            user_id=request.headers.get('X-User-ID', 'anonymous'),
+            source='model_routes.list_models',
+            message='Error listing models',
+            details={'error': str(e)}
+        )
+        
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': error_message
         }), 500
 
-@model_bp.route('/health', methods=['GET'])
-def check_health():
-    """Check health of model service"""
-    try:
-        health_status = model_service.check_model_health()
-        return jsonify(health_status)
-    except Exception as e:
-        logger.error(f"Error checking health: {str(e)}")
-        return jsonify({
-            'status': 'unhealthy',
-            'error': str(e)
-        }), 500
-
-@model_bp.route('/models/<model_id>', methods=['GET'])
+@model_routes.route('/models/<model_id>', methods=['GET'])
 def get_model(model_id):
     """Get model details by ID"""
     try:
@@ -158,7 +99,7 @@ def get_model(model_id):
             'error': error_message
         }), 500
 
-@model_bp.route('/models/<model_id>/parameters', methods=['PUT'])
+@model_routes.route('/models/<model_id>/parameters', methods=['PUT'])
 def update_parameters(model_id):
     """Update model parameters"""
     try:
@@ -210,7 +151,7 @@ def update_parameters(model_id):
             'error': error_message
         }), 500
 
-@model_bp.route('/ollama/status', methods=['GET'])
+@model_routes.route('/ollama/status', methods=['GET'])
 def ollama_status():
     """Check OLLAMA server status"""
     try:
@@ -248,7 +189,7 @@ def ollama_status():
             'error': error_message
         }), 500
 
-@model_bp.route('/ollama/pull', methods=['POST'])
+@model_routes.route('/ollama/pull', methods=['POST'])
 def pull_model():
     """Pull a model from OLLAMA"""
     try:

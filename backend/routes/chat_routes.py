@@ -752,37 +752,17 @@ def simple_chat():
             # If files were uploaded, add them to the message
             if files:
                 # Check if the message is about visualization
-                is_visualization_request = False
-                if message:
-                    visualization_keywords = ['visualize', 'visualization', 'chart', 'graph', 'plot', 'dashboard', 'analyze', 'analysis']
-                    is_visualization_request = any(keyword in message.lower() for keyword in visualization_keywords)
-                
-                if is_visualization_request or (not message and len(files) > 0):
+                if message and ('visualize' in message.lower() or 'visualization' in message.lower() or 
+                               'chart' in message.lower() or 'graph' in message.lower() or 
+                               'plot' in message.lower() or 'dashboard' in message.lower()):
                     # Generate visualizations for the files
                     visualizations = []
-                    dashboard_data = None
-                    plotly_charts = []
-                    
                     for file_info in files:
                         try:
-                            # Check file extension
-                            file_ext = os.path.splitext(file_info['original_filename'])[1].lower()
-                            if file_ext not in ['.csv', '.xlsx', '.xls']:
-                                continue
-                                
                             # Generate dashboard for the file
-                            from services.visualization_service import generate_dashboard, suggest_chart_type
-                            
                             result = generate_dashboard(file_info['path'])
                             if result.get('success', False):
                                 visualizations.extend(result.get('visualizations', []))
-                                plotly_charts = result.get('plotly_charts', [])
-                                dashboard_data = {
-                                    'stats': result.get('stats', {}),
-                                    'top5': result.get('top5', []),
-                                    'columns': result.get('columns', []),
-                                    'ml_insights': result.get('ml_insights', None)
-                                }
                                 
                                 # Create a response with visualization links
                                 viz_links = []
@@ -805,7 +785,7 @@ def simple_chat():
                                 response += f"\n\nBased on the visualizations, here are some insights:\n\n"
                                 
                                 # Add insights for correlation heatmap
-                                if any('heatmap' in viz.get('type', '') for viz in result.get('visualizations', [])):
+                                if any('correlation' in viz.get('type', '') for viz in result.get('visualizations', [])):
                                     response += "- The correlation heatmap shows relationships between numeric variables. Strong positive correlations appear in dark red, while strong negative correlations appear in dark blue.\n"
                                 
                                 # Add insights for histograms
@@ -813,24 +793,13 @@ def simple_chat():
                                     response += "- The histograms show the distribution of numeric variables. You can see the shape, central tendency, and spread of each variable.\n"
                                 
                                 # Add insights for categorical data
-                                if any('bar' in viz.get('type', '') for viz in result.get('visualizations', [])):
+                                if any('categorical' in viz.get('type', '') for viz in result.get('visualizations', [])):
                                     response += "- The bar charts show the frequency of different categories in your categorical variables.\n"
                                 
-                                # Add ML insights if available
-                                ml_insights = result.get('ml_insights', None)
-                                if ml_insights:
-                                    response += f"- I've applied a simple linear regression model to your data. The model has an R² score of {ml_insights.get('r2', 0):.2f}, indicating {'good' if ml_insights.get('r2', 0) > 0.7 else 'moderate' if ml_insights.get('r2', 0) > 0.4 else 'poor'} predictive power.\n"
-                                
                                 # Add call to action
-                                response += f"\n\nYou can interact with the visualizations using the dashboard controls. Would you like me to create any specific visualizations for this data? For example, I can create scatter plots, line charts, or box plots for specific variables."
+                                response += f"\n\nWould you like me to create any specific visualizations for this data? For example, I can create scatter plots, line charts, or box plots for specific variables."
                                 
-                                return jsonify({
-                                    "success": True, 
-                                    "message": response,
-                                    "visualizations": visualizations,
-                                    "plotly_charts": plotly_charts,
-                                    "dashboard": dashboard_data
-                                }), 200
+                                return jsonify({"success": True, "message": response}), 200
                         except Exception as e:
                             logger.error(f"Error generating visualizations: {str(e)}")
                 

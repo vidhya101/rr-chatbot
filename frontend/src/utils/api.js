@@ -7,11 +7,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
-  },
-  // Add timeout
-  timeout: 10000,
-  // Remove withCredentials since we're not using cookies
-  withCredentials: false
+  }
 });
 
 // Request interceptor
@@ -23,13 +19,9 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
     
-    // Log request
-    console.log(`Making ${config.method.toUpperCase()} request to ${config.url}`, config.data);
-    
     return config;
   },
   (error) => {
-    console.error('Request error:', error);
     return Promise.reject(error);
   }
 );
@@ -37,20 +29,10 @@ api.interceptors.request.use(
 // Response interceptor
 api.interceptors.response.use(
   (response) => {
-    // Log successful response
-    console.log(`Response from ${response.config.url}:`, response.data);
     return response;
   },
   async (error) => {
     const originalRequest = error.config;
-    
-    // Log error response
-    console.error('Response error:', {
-      url: originalRequest?.url,
-      status: error.response?.status,
-      data: error.response?.data,
-      error: error.message
-    });
     
     // If error is 401 Unauthorized and not a retry
     if (error.response?.status === 401 && !originalRequest._retry) {
@@ -62,7 +44,7 @@ api.interceptors.response.use(
       if (refreshToken && !isTokenExpired(refreshToken)) {
         try {
           const response = await axios.post(
-            `${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/auth/refresh`,
+            `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/auth/refresh`,
             {},
             {
               headers: {
@@ -80,12 +62,13 @@ api.interceptors.response.use(
           originalRequest.headers.Authorization = `Bearer ${response.data.access_token}`;
           return api(originalRequest);
         } catch (refreshError) {
-          console.error('Token refresh failed:', refreshError);
+          // If refresh fails, clear auth and redirect to login
           clearAuth();
           window.location.href = '/login';
           return Promise.reject(refreshError);
         }
       } else {
+        // If no refresh token or it's expired, clear auth and redirect to login
         clearAuth();
         window.location.href = '/login';
       }

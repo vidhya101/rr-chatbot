@@ -35,54 +35,52 @@ def allowed_file(filename):
 def upload_file():
     """Upload a file"""
     try:
-        logger.info("File upload request received")
-        
+        # Check if file is in request
         if 'file' not in request.files:
-            logger.error("No file part in request")
-            return jsonify({
-                'success': False,
-                'error': 'No file part'
-            }), 400
-            
+            return jsonify({'error': 'No file part in the request'}), 400
+        
         file = request.files['file']
         
+        # Check if file is selected
         if file.filename == '':
-            logger.error("No selected file")
-            return jsonify({
-                'success': False,
-                'error': 'No selected file'
-            }), 400
-            
-        if not allowed_file(file.filename):
-            logger.error(f"File type not allowed: {file.filename}")
-            return jsonify({
-                'success': False,
-                'error': f'File type not allowed. Allowed types: {", ".join(ALLOWED_EXTENSIONS)}'
-            }), 400
-            
-        filename = secure_filename(file.filename)
-        upload_folder = current_app.config['UPLOAD_FOLDER']
+            return jsonify({'error': 'No file selected'}), 400
         
-        if not os.path.exists(upload_folder):
-            os.makedirs(upload_folder)
-            
-        file_path = os.path.join(upload_folder, filename)
+        # Check if file extension is allowed
+        if not allowed_file(file.filename):
+            return jsonify({'error': 'File type not allowed'}), 400
+        
+        # Get current user if authenticated
+        current_user_id = get_jwt_identity()
+        
+        # Generate a unique filename
+        filename = secure_filename(file.filename)
+        unique_filename = f"{uuid.uuid4()}_{filename}"
+        
+        # Create user directory if authenticated
+        if current_user_id:
+            user_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], str(current_user_id))
+            os.makedirs(user_dir, exist_ok=True)
+            file_path = os.path.join(user_dir, unique_filename)
+        else:
+            # For unauthenticated users, store in a temporary directory
+            temp_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'temp')
+            os.makedirs(temp_dir, exist_ok=True)
+            file_path = os.path.join(temp_dir, unique_filename)
+        
+        # Save file
         file.save(file_path)
         
-        logger.info(f"File saved successfully: {file_path}")
-        
+        # Return file info
         return jsonify({
-            'success': True,
             'message': 'File uploaded successfully',
+            'filename': unique_filename,
+            'original_filename': filename,
             'file_path': file_path
-        })
-        
+        }), 201
+    
     except Exception as e:
-        logger.error(f"Error uploading file: {str(e)}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': f'Error uploading file: {str(e)}'
-        }), 500
+        logger.error(f"Error uploading file: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @file_bp.route('/analyze', methods=['POST'])
 def analyze_file():
@@ -102,23 +100,6 @@ def analyze_file():
         
         if not os.path.exists(file_path):
             return jsonify({'error': 'File not found'}), 404
-            
-        # Check if target column is valid for the file
-        try:
-            # Read a small sample to check columns
-            file_extension = os.path.splitext(file_path)[1].lower()
-            if file_extension == '.csv':
-                df_sample = pd.read_csv(file_path, nrows=5)
-            elif file_extension in ['.xlsx', '.xls']:
-                df_sample = pd.read_excel(file_path, nrows=5)
-            else:
-                df_sample = pd.read_csv(file_path, sep=None, engine='python', nrows=5)
-                
-            if target_column and target_column not in df_sample.columns:
-                return jsonify({'error': f"Target column '{target_column}' not found in dataset"}), 400
-        except Exception as e:
-            logger.error(f"Error checking target column: {str(e)}")
-            return jsonify({'error': f"Error checking target column: {str(e)}"}), 500
         
         # Analyze the dataset
         analysis_results = analyze_dataset(file_path, target_column, model_type)
@@ -130,7 +111,7 @@ def analyze_file():
     
     except Exception as e:
         logger.error(f"Error analyzing file: {str(e)}")
-        return jsonify({'error': f"Error analyzing file: {str(e)}"}), 500
+        return jsonify({'error': str(e)}), 500
 
 @file_bp.route('/preview', methods=['POST'])
 def preview_file():
@@ -207,21 +188,16 @@ def create_dashboard():
         analyzer.load_data()
         analyzer.explore_data()
         analyzer.clean_data()
-        
-        # Only engineer features if target column is provided
-        if target_column and target_column in analyzer.df.columns:
-            analyzer.engineer_features(target_column=target_column)
-            analyzer.train_model()
-        else:
-            analyzer.engineer_features()
-            
+        analyzer.engineer_features(target_column=target_column)
         analyzer.analyze_data()
         analyzer.create_visualizations()
+        
+        if target_column and target_column in analyzer.df.columns:
+            analyzer.train_model()
         
         # Generate dashboard data
         dashboard_data = analyzer.generate_dashboard_data()
         
-        # Return the dashboard data
         return jsonify({
             'message': 'Dashboard created successfully',
             'dashboard_data': dashboard_data
@@ -229,41 +205,43 @@ def create_dashboard():
     
     except Exception as e:
         logger.error(f"Error creating dashboard: {str(e)}")
-        return jsonify({'error': f'Error creating dashboard: {str(e)}'}), 500
+        return jsonify({'error': str(e)}), 500
 
 @file_bp.route('/', methods=['GET'])
 @jwt_required(optional=True)
 def list_files():
     """List all files for the current user"""
     try:
-        upload_folder = current_app.config['UPLOAD_FOLDER']
-        if not os.path.exists(upload_folder):
-            return jsonify({
-                'success': True,
-                'files': []
-            })
-            
-        files = []
-        for filename in os.listdir(upload_folder):
-            file_path = os.path.join(upload_folder, filename)
-            if os.path.isfile(file_path):
-                files.append({
-                    'name': filename,
-                    'path': file_path,
-                    'size': os.path.getsize(file_path)
-                })
-                
-        return jsonify({
-            'success': True,
-            'files': files
-        })
+        # Get current user if authenticated
+        current_user_id = get_jwt_identity()
         
+        if current_user_id:
+            # Get files for authenticated user
+            user_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], str(current_user_id))
+            os.makedirs(user_dir, exist_ok=True)
+            
+            files = []
+            for filename in os.listdir(user_dir):
+                file_path = os.path.join(user_dir, filename)
+                if os.path.isfile(file_path):
+                    # Get file info
+                    file_info = {
+                        'filename': filename,
+                        'original_filename': filename.split('_', 1)[1] if '_' in filename else filename,
+                        'file_path': file_path,
+                        'size': os.path.getsize(file_path),
+                        'created_at': os.path.getctime(file_path)
+                    }
+                    files.append(file_info)
+            
+            return jsonify({'files': files}), 200
+        else:
+            # For unauthenticated users, return empty list
+            return jsonify({'files': []}), 200
+    
     except Exception as e:
-        logger.error(f"Error listing files: {str(e)}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': f'Error listing files: {str(e)}'
-        }), 500
+        logger.error(f"Error listing files: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @file_bp.route('/<filename>', methods=['GET'])
 @jwt_required(optional=True)

@@ -54,14 +54,48 @@ api.interceptors.response.use(
 // Chat API functions
 export const sendMessage = async ({ message, chatHistory, files, model }) => {
   try {
-    const payload = {
-      message,
-      chatId: chatHistory?.length > 0 ? chatHistory[0].chatId : undefined,
-      model: model || 'mistral'
-    };
-
-    const response = await api.post('/api/chat', payload);
-    return response.data;
+    // First try the simple-chat endpoint
+    try {
+      const formData = new FormData();
+      
+      // Add message and model to form data
+      const payload = {
+        message,
+        chatHistory,
+        model: model || 'mistral'
+      };
+      
+      formData.append('data', JSON.stringify(payload));
+      
+      // Add files if any
+      if (files && files.length > 0) {
+        files.forEach((file, index) => {
+          formData.append(`file${index}`, file);
+        });
+      }
+      
+      const response = await api.post('/simple-chat', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 60000, // 60 second timeout
+      });
+      
+      return response.data;
+    } catch (simpleError) {
+      console.log('Simple chat endpoint failed, trying public chat endpoint', simpleError);
+      
+      // If simple-chat fails, try the public/chat endpoint
+      const response = await api.post('/public/chat', {
+        message,
+        chatHistory,
+        model: model || 'mistral'
+      }, {
+        timeout: 60000, // 60 second timeout
+      });
+      
+      return response.data;
+    }
   } catch (error) {
     console.error('Error sending message:', error);
     

@@ -1,135 +1,115 @@
-# RR-Chatbot: Advanced AI-Powered Data Analysis and Visualization Platform
+# AI Chatbot with Data Visualization
 
-A modern, scalable platform for AI-powered chat, data analysis, and visualization built with FastAPI, React, and modern AI technologies.
+A powerful AI chatbot application with data visualization capabilities, built with Flask, React, and Material UI.
 
 ## Features
 
-- **AI-Powered Chat**: Engage with multiple AI models including OpenAI GPT and Mistral AI
-- **Real-time Communication**: WebSocket support for streaming responses
-- **Data Visualization**: Generate interactive visualizations and dashboards from uploaded data
-- **File Management**: Upload, analyze, and manage various file formats
-- **Caching**: Redis-based caching for improved performance
-- **Asynchronous Processing**: Non-blocking operations for better scalability
-- **Modern Architecture**: FastAPI backend with React frontend
+- **Multiple AI Models**: Supports OLLAMA models, Mistral API, and more
+- **Data Visualization**: Upload datasets and generate visualizations directly in the chat
+- **File Upload**: Upload and analyze various file types
+- **Voice Recording**: Record voice messages for transcription
+- **Responsive UI**: Works on desktop and mobile devices
+- **Dark Mode**: Toggle between light and dark themes
+- **Model Settings**: Adjust temperature, max tokens, and other parameters
+- **Error Handling**: Robust error handling with fallbacks
+- **SQLite Database**: Store chat history, user data, and logs
 
-## Tech Stack
+## Visualization Features
 
-### Backend
-- **FastAPI**: Modern, fast web framework for building APIs
-- **SQLAlchemy**: SQL toolkit and ORM
-- **Redis**: In-memory data store for caching and pub/sub
-- **Pandas/NumPy**: Data processing and analysis
-- **Matplotlib/Seaborn/Plotly**: Data visualization
-- **OpenAI/Mistral AI**: AI model integration
-
-### Frontend (Planned)
-- **React**: UI library for building interactive interfaces
-- **TypeScript**: Type-safe JavaScript
-- **Tailwind CSS**: Utility-first CSS framework
-- **React Query**: Data fetching and state management
-- **Socket.IO**: Real-time communication
+- **Automatic Dashboard Generation**: Upload a dataset and get a comprehensive dashboard
+- **Custom Visualizations**: Generate specific visualizations like histograms, scatter plots, etc.
+- **Data Analysis**: Get insights and statistics about your data
+- **Interactive UI**: View, download, and share visualizations
 
 ## Getting Started
 
 ### Prerequisites
-- Python 3.9+
-- Redis server
-- Node.js 16+ (for frontend)
+
+- Python 3.8+
+- Node.js 14+
+- OLLAMA (optional, for local models)
 
 ### Installation
 
 1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/rr-chatbot.git
-cd rr-chatbot
-```
+   ```
+   git clone https://github.com/yourusername/ai-chatbot.git
+   cd ai-chatbot
+   ```
 
-2. Create a virtual environment and install dependencies:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-```
+2. Install backend dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
 
-3. Set up environment variables:
-```bash
-cp .env.example .env
-# Edit .env with your configuration
-```
+3. Install frontend dependencies:
+   ```
+   cd frontend
+   npm install
+   cd ..
+   ```
 
-4. Start the backend server:
-```bash
-cd backend
-uvicorn main:app --reload
-```
+4. Set up environment variables:
+   Create a `.env` file in the root directory with the following variables:
+   ```
+   FLASK_ENV=development
+   SECRET_KEY=your_secret_key
+   MISTRAL_API_KEY=your_mistral_api_key
+   HUGGINGFACE_TOKEN=your_huggingface_token
+   UPLOAD_FOLDER=uploads
+   ```
 
-5. (Optional) Start Redis server:
-```bash
-redis-server
-```
+5. Start the backend server:
+   ```
+   python app.py
+   ```
 
-### Environment Variables
+6. Start the frontend development server:
+   ```
+   cd frontend
+   npm start
+   ```
 
-Create a `.env` file in the project root with the following variables:
+7. Open your browser and navigate to `http://localhost:3000`
 
-```
-# Database
-DATABASE_URI=sqlite:///app.db
+## Usage
 
-# Redis
-REDIS_URL=redis://localhost:6379/0
+### Uploading and Visualizing Data
 
-# API Keys
-OPENAI_API_KEY=your_openai_api_key
-MISTRAL_API_KEY=your_mistral_api_key
+1. Click the file upload button in the chat interface
+2. Select a data file (CSV, Excel, JSON, etc.)
+3. Ask the chatbot to visualize the data:
+   - "Visualize this data"
+   - "Create a dashboard for this dataset"
+   - "Show me a histogram of column X"
+   - "Generate a scatter plot of X vs Y"
 
-# App Settings
-UPLOAD_FOLDER=./uploads
-DEBUG=True
-```
+### Adjusting Model Settings
 
-## API Documentation
+1. Click the settings icon in the chat interface
+2. Select a different model from the available options
+3. Adjust parameters like temperature, max tokens, etc.
+4. Continue chatting with the new settings
 
-Once the server is running, you can access the API documentation at:
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
+## API Endpoints
 
-## Project Structure
+### Chat Endpoints
 
-```
-rr-chatbot/
-├── backend/
-│   ├── api/
-│   │   ├── db/
-│   │   │   ├── database.py
-│   │   │   └── redis_client.py
-│   │   ├── models/
-│   │   │   ├── chat.py
-│   │   │   └── visualization.py
-│   │   ├── routes/
-│   │   │   ├── chat.py
-│   │   │   ├── file.py
-│   │   │   └── visualization.py
-│   │   └── services/
-│   │       ├── chat_service.py
-│   │       ├── file_service.py
-│   │       └── visualization_service.py
-│   ├── main.py
-│   └── requirements.txt
-├── frontend/
-│   ├── public/
-│   └── src/
-├── .env
-└── README.md
-```
+- `POST /api/simple-chat`: Send a message to the chatbot
+- `POST /api/public/chat`: Public chat endpoint (no authentication required)
+- `POST /api/chat`: Authenticated chat endpoint
 
-## Contributing
+### Visualization Endpoints
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- `POST /api/visualization/visualize`: Generate a visualization for a dataset
+- `POST /api/visualization/dashboard`: Generate a comprehensive dashboard for a dataset
+- `GET /api/visualization/visualizations/<filename>`: Get a visualization image
+
+### File Endpoints
+
+- `POST /api/files/upload`: Upload files
+- `GET /api/files/list`: List uploaded files
+- `GET /api/files/download/<filename>`: Download a file
 
 ## License
 
@@ -137,7 +117,11 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Acknowledgments
 
-- OpenAI for GPT models
-- Mistral AI for their models
-- FastAPI team for the excellent framework
-- All open-source libraries used in this project 
+- [Flask](https://flask.palletsprojects.com/)
+- [React](https://reactjs.org/)
+- [Material UI](https://mui.com/)
+- [OLLAMA](https://ollama.ai/)
+- [Mistral AI](https://mistral.ai/)
+- [Pandas](https://pandas.pydata.org/)
+- [Matplotlib](https://matplotlib.org/)
+- [Seaborn](https://seaborn.pydata.org/) 

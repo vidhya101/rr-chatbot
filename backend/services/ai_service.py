@@ -176,12 +176,9 @@ def check_ollama_health():
         return ollama_health_status["is_healthy"]
     
     try:
-        print(f"Checking Ollama health at {OLLAMA_HOST}/api/tags")
         response = ollama_session.get(f"{OLLAMA_HOST}/api/tags", timeout=2)
         ollama_health_status["is_healthy"] = response.status_code == 200
-        print(f"Ollama health check response: {response.status_code}")
-    except Exception as e:
-        print(f"Ollama health check error: {str(e)}")
+    except:
         ollama_health_status["is_healthy"] = False
     
     ollama_health_status["last_checked"] = current_time

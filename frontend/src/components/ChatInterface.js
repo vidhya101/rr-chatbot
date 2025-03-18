@@ -29,7 +29,6 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import SettingsIcon from '@mui/icons-material/Settings';
 import TuneIcon from '@mui/icons-material/Tune';
 import CloseIcon from '@mui/icons-material/Close';
-import NavigationIcon from '@mui/icons-material/Navigation';
 
 // Markdown and code highlighting
 import ReactMarkdown from 'react-markdown';
@@ -82,32 +81,16 @@ const ChatInterface = ({ activeModel, darkMode, onModelChange }) => {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState('info');
-  const [showChatNav, setShowChatNav] = useState(false);
-  const [sliderValue, setSliderValue] = useState(0);
   
   const messagesEndRef = useRef(null);
-  const messagesContainerRef = useRef(null);
   const fileInputRef = useRef(null);
   const inputRef = useRef(null);
   const settingsRef = useRef(null);
-  const messageRefs = useRef({});
 
   // Scroll to bottom when messages change
   useEffect(() => {
-    // Only scroll to bottom if we're at the bottom already or a new message is added
-    const shouldScrollToBottom = 
-      messages.length === 0 || 
-      sliderValue === messages.length - 2 || // We were at the last message before a new one was added
-      messages[messages.length - 1]?.role === 'user'; // User just sent a message
-    
-    if (shouldScrollToBottom) {
-      scrollToBottom();
-      // Update slider value to the latest message
-      if (messages.length > 0) {
-        setSliderValue(messages.length - 1);
-      }
-    }
-  }, [messages, sliderValue]);
+    scrollToBottom();
+  }, [messages]);
 
   // Initial greeting message
   useEffect(() => {
@@ -127,22 +110,6 @@ const ChatInterface = ({ activeModel, darkMode, onModelChange }) => {
       
       return () => clearTimeout(timer);
     }
-  }, []);
-
-  // Add keyboard shortcut for chat navigation
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      // Alt+N to toggle chat navigation
-      if (e.altKey && e.key === 'n') {
-        e.preventDefault();
-        toggleChatNav();
-      }
-    };
-    
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
   }, []);
 
   const scrollToBottom = () => {
@@ -268,172 +235,150 @@ const ChatInterface = ({ activeModel, darkMode, onModelChange }) => {
     // Show typing indicator
     setTypingIndicator(true);
     
-    // Maximum number of retries
-    const maxRetries = 2;
-    let retryCount = 0;
-    let success = false;
-    
-    while (retryCount <= maxRetries && !success) {
-      try {
-        // Check if this is a visualization request
-        const isVisualizationRequest = 
-          input.toLowerCase().includes('visualize') || 
-          input.toLowerCase().includes('visualization') ||
-          input.toLowerCase().includes('chart') ||
-          input.toLowerCase().includes('graph') ||
-          input.toLowerCase().includes('plot') ||
-          input.toLowerCase().includes('dashboard');
+    try {
+      // Check if this is a visualization request
+      const isVisualizationRequest = 
+        input.toLowerCase().includes('visualize') || 
+        input.toLowerCase().includes('visualization') ||
+        input.toLowerCase().includes('chart') ||
+        input.toLowerCase().includes('graph') ||
+        input.toLowerCase().includes('plot') ||
+        input.toLowerCase().includes('dashboard');
+      
+      // Check if we have data files
+      const dataFiles = uploadedFiles.filter(file => {
+        const ext = file.name.split('.').pop().toLowerCase();
+        return ['csv', 'xlsx', 'xls', 'json', 'txt', 'tsv'].includes(ext);
+      });
+      
+      let response;
+      
+      // If it's a visualization request and we have data files
+      if (isVisualizationRequest && dataFiles.length > 0) {
+        // Create FormData for file upload
+        const formData = new FormData();
         
-        // Check if we have data files
-        const dataFiles = uploadedFiles.filter(file => {
-          const ext = file.name.split('.').pop().toLowerCase();
-          return ['csv', 'xlsx', 'xls', 'json', 'txt', 'tsv'].includes(ext);
+        // Add message data
+        const messageData = {
+          message: input,
+          chatHistory: messages.map(msg => ({
+            role: msg.role,
+            content: msg.content
+          })),
+          model: activeModel || 'mistral',
+          settings: modelSettings
+        };
+        
+        formData.append('data', JSON.stringify(messageData));
+        
+        // Add the first data file (we'll only visualize one at a time)
+        formData.append('file', dataFiles[0]);
+        
+        // Send the request with file for visualization
+        response = await fetch('/api/simple-chat', {
+          method: 'POST',
+          body: formData
         });
         
-        let response;
-        
-        // If it's a visualization request and we have data files
-        if (isVisualizationRequest && dataFiles.length > 0) {
-          // Create FormData for file upload
-          const formData = new FormData();
-          
-          // Add message data
-          const messageData = {
-            message: input,
-            chatHistory: messages.map(msg => ({
-              role: msg.role,
-              content: msg.content
-            })),
-            model: activeModel || 'mistral',
-            settings: modelSettings
-          };
-          
-          formData.append('data', JSON.stringify(messageData));
-          
-          // Add the first data file (we'll only visualize one at a time)
-          formData.append('file', dataFiles[0]);
-          
-          // Send the request with file for visualization
-          const fetchResponse = await fetch('/api/simple-chat', {
-            method: 'POST',
-            body: formData
-          });
-          
-          if (!fetchResponse.ok) {
-            throw new Error(`Server responded with ${fetchResponse.status}: ${fetchResponse.statusText}`);
-          }
-          
-          response = await fetchResponse.json();
-        } else {
-          // Send the message to the API with model settings
-          response = await sendMessage({
-            message: input,
-            chatHistory: messages.map(msg => ({
-              role: msg.role,
-              content: msg.content
-            })),
-            files: uploadedFiles,
-            model: activeModel || 'mistral',
-            settings: modelSettings
-          });
+        if (!response.ok) {
+          throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
         }
         
-        // Clear uploaded files after sending
-        setUploadedFiles([]);
-        
-        // Hide typing indicator and add response
-        setTypingIndicator(false);
-        
-        // Check if response has message property or if it's directly the message
-        const responseContent = response.message || response;
-        
-        setMessages(prevMessages => [
-          ...prevMessages,
-          {
-            role: 'assistant',
-            content: responseContent,
-            timestamp: response.timestamp || new Date().toISOString(),
-            isLoading: false
-          }
-        ]);
-        
-        // Generate new suggested questions based on the conversation
-        generateSuggestedQuestions(responseContent);
-        
-        // Save the chat to history
-        try {
-          await saveChat({
-            message: input,
-            response: responseContent,
-            model: activeModel || 'mistral',
-            timestamp: new Date().toISOString()
-          });
-        } catch (err) {
-          console.error('Error saving chat:', err);
-          // Non-critical error, don't show to user
-        }
-        
-        // Check response time
-        const responseTime = response.responseTime || 0;
-        if (responseTime > 10) {
-          showSnackbar(`Response took ${responseTime.toFixed(1)} seconds. Consider using a different model for faster responses.`, 'info');
-        }
-        
-        // Mark as successful
-        success = true;
-        
-      } catch (err) {
-        console.error(`Error sending message (attempt ${retryCount + 1}/${maxRetries + 1}):`, err);
-        
-        // Increment retry count
-        retryCount++;
-        
-        // If we've reached max retries, show error to user
-        if (retryCount > maxRetries) {
-          setTypingIndicator(false);
-          
-          // Check for specific error types
-          let errorMessage = "I'm having trouble connecting right now. Could you try again in a moment?";
-          
-          if (err.message && err.message.includes('timeout')) {
-            errorMessage = "The request took too long to complete. Try a simpler question or a different model.";
-            showSnackbar("Request timed out. Try a different model or a simpler question.", "error");
-          } else if (err.message && err.message.includes('Ollama')) {
-            errorMessage = "I couldn't connect to the Ollama server. Please check if it's running correctly.";
-            showSnackbar("Ollama server connection failed. Using fallback models.", "warning");
-            setOllamaStatus('offline');
-          } else {
-            showSnackbar("Error sending message. Please try again.", "error");
-          }
-          
-          // Add a friendly error message
-          setMessages(prevMessages => [
-            ...prevMessages,
-            {
-              role: 'assistant',
-              content: errorMessage,
-              timestamp: new Date().toISOString(),
-              isError: true
-            }
-          ]);
-          
-          setError(errorMessage);
-        } else {
-          // If we still have retries left, wait a bit before retrying
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          // Keep the typing indicator on during retries
-        }
+        response = await response.json();
+      } else {
+        // Send the message to the API with model settings
+        response = await sendMessage({
+          message: input,
+          chatHistory: messages.map(msg => ({
+            role: msg.role,
+            content: msg.content
+          })),
+          files: uploadedFiles,
+          model: activeModel || 'mistral',
+          settings: modelSettings
+        });
       }
+      
+      // Clear uploaded files after sending
+      setUploadedFiles([]);
+      
+      // Hide typing indicator and add response
+      setTypingIndicator(false);
+      
+      // Check if response has message property or if it's directly the message
+      const responseContent = response.message || response;
+      
+      setMessages(prevMessages => [
+        ...prevMessages,
+        {
+          role: 'assistant',
+          content: responseContent,
+          timestamp: response.timestamp || new Date().toISOString(),
+          isLoading: false
+        }
+      ]);
+      
+      // Generate new suggested questions based on the conversation
+      generateSuggestedQuestions(responseContent);
+      
+      // Save the chat to history
+      try {
+        await saveChat({
+          message: input,
+          response: responseContent,
+          model: activeModel || 'mistral',
+          timestamp: new Date().toISOString()
+        });
+      } catch (err) {
+        console.error('Error saving chat:', err);
+        // Non-critical error, don't show to user
+      }
+      
+      // Check response time
+      const responseTime = response.responseTime || 0;
+      if (responseTime > 10) {
+        showSnackbar(`Response took ${responseTime.toFixed(1)} seconds. Consider using a different model for faster responses.`, 'info');
+      }
+      
+    } catch (err) {
+      console.error('Error sending message:', err);
+      setTypingIndicator(false);
+      
+      // Check for specific error types
+      let errorMessage = "I'm having trouble connecting right now. Could you try again in a moment?";
+      
+      if (err.message && err.message.includes('timeout')) {
+        errorMessage = "The request took too long to complete. Try a simpler question or a different model.";
+        showSnackbar("Request timed out. Try a different model or a simpler question.", "error");
+      } else if (err.message && err.message.includes('Ollama')) {
+        errorMessage = "I couldn't connect to the Ollama server. Please check if it's running correctly.";
+        showSnackbar("Ollama server connection failed. Using fallback models.", "warning");
+        setOllamaStatus('offline');
+      } else {
+        showSnackbar("Error sending message. Please try again.", "error");
+      }
+      
+      // Add a friendly error message
+      setMessages(prevMessages => [
+        ...prevMessages,
+        {
+          role: 'assistant',
+          content: errorMessage,
+          timestamp: new Date().toISOString(),
+          isError: true
+        }
+      ]);
+      
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+      setIsGenerating(false);
+      
+      // Focus back on input field
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
     }
-    
-    // Always clean up regardless of success or failure
-    setIsLoading(false);
-    setIsGenerating(false);
-    
-    // Focus back on input field
-    setTimeout(() => {
-      inputRef.current?.focus();
-    }, 100);
   };
 
   // Generate suggested questions based on conversation
@@ -691,112 +636,9 @@ const ChatInterface = ({ activeModel, darkMode, onModelChange }) => {
     }
   };
 
-  // Scroll to a specific message
-  const scrollToMessage = (index) => {
-    if (messageRefs.current[index]) {
-      messageRefs.current[index].scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      });
-      
-      // Add a highlight effect to the message
-      const message = messageRefs.current[index];
-      message.style.transition = 'box-shadow 0.3s ease, transform 0.3s ease';
-      message.style.boxShadow = '0 0 0 2px #2196f3';
-      message.style.transform = 'scale(1.02)';
-      
-      setTimeout(() => {
-        message.style.boxShadow = '';
-        message.style.transform = '';
-      }, 1000);
-    }
-  };
-  
-  // Handle slider change
-  const handleSliderChange = (event, newValue) => {
-    // Only scroll if the value has actually changed
-    if (newValue !== sliderValue) {
-      setSliderValue(newValue);
-      
-      // Use requestAnimationFrame for smoother scrolling
-      requestAnimationFrame(() => {
-        scrollToMessage(newValue);
-      });
-      
-      // Remove any haptic feedback to avoid issues
-      // if (navigator.vibrate) {
-      //   navigator.vibrate(10);
-      // }
-    }
-  };
-  
-  // Toggle chat navigation sidebar
-  const toggleChatNav = () => {
-    setShowChatNav(!showChatNav);
-  };
-  
-  // Render chat navigation sidebar
-  const renderChatNavSidebar = () => (
-    <>
-      <div 
-        className={`chat-nav-overlay ${showChatNav ? 'visible' : ''}`} 
-        onClick={toggleChatNav}
-      />
-      <div className={`chat-nav-sidebar ${showChatNav ? 'open' : ''}`}>
-        <div className="chat-nav-header">
-          <Typography variant="subtitle1">Chat Navigation</Typography>
-          <IconButton size="small" onClick={toggleChatNav}>
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        </div>
-        <Divider />
-        <div className="chat-nav-content">
-          <Typography variant="body2" gutterBottom>
-            Slide to navigate through messages
-          </Typography>
-          <Box sx={{ px: 2, py: 1 }}>
-            <Slider
-              value={sliderValue}
-              onChange={handleSliderChange}
-              min={0}
-              max={Math.max(0, messages.length - 1)}
-              step={1}
-              marks
-              valueLabelDisplay="off"
-              disabled={messages.length <= 1}
-            />
-          </Box>
-          <div className="chat-nav-message-list">
-            {messages.map((message, index) => (
-              <div 
-                key={index}
-                className={`chat-nav-message-item ${sliderValue === index ? 'active' : ''}`}
-                onClick={() => {
-                  setSliderValue(index);
-                  scrollToMessage(index);
-                }}
-              >
-                <Typography variant="caption">
-                  {message.role === 'user' ? 'You' : activeModel || 'AI'} - 
-                  {new Date(message.timestamp).toLocaleTimeString()}
-                </Typography>
-                <Typography variant="body2" noWrap>
-                  {message.content.substring(0, 50)}
-                  {message.content.length > 50 ? '...' : ''}
-                </Typography>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </>
-  );
-
   return (
     <div className={`chat-interface ${darkMode ? 'dark-mode' : ''}`}>
-      {renderChatNavSidebar()}
-      
-      <div className="chat-messages" ref={messagesContainerRef}>
+      <div className="chat-messages">
         {messages.length === 0 && !typingIndicator ? (
           <div className="empty-chat">
             <Typography variant="h5" gutterBottom>
@@ -830,7 +672,6 @@ const ChatInterface = ({ activeModel, darkMode, onModelChange }) => {
                 key={index} 
                 elevation={1} 
                 className={`message ${message.role} ${message.isLoading ? 'loading' : ''} ${message.isError ? 'error' : ''} ${message.feedback ? `feedback-${message.feedback}` : ''}`}
-                ref={el => messageRefs.current[index] = el}
               >
                 <div className="message-header">
                   <Typography variant="subtitle2">
@@ -925,27 +766,6 @@ const ChatInterface = ({ activeModel, darkMode, onModelChange }) => {
         </div>
       )}
       
-      {messages.length > 1 && (
-        <div className="message-slider-container">
-          <Box sx={{ width: '100%', padding: '0 16px' }}>
-            <Typography variant="caption" color="textSecondary">
-              Navigate Messages ({sliderValue + 1}/{messages.length})
-            </Typography>
-            <Slider
-              value={sliderValue}
-              onChange={handleSliderChange}
-              min={0}
-              max={messages.length - 1}
-              step={1}
-              marks={messages.length <= 10 ? Array.from({ length: messages.length }, (_, i) => ({ value: i })) : false}
-              valueLabelDisplay="off"
-              size="small"
-              aria-label="Message navigation"
-            />
-          </Box>
-        </div>
-      )}
-      
       <form onSubmit={handleSubmit} className="chat-input-container">
         <input
           type="file"
@@ -999,16 +819,6 @@ const ChatInterface = ({ activeModel, darkMode, onModelChange }) => {
         >
           {isLoading ? <CircularProgress size={24} /> : 'Send'}
         </Button>
-        
-        <Tooltip title="Chat Navigation (Alt+N)">
-          <IconButton
-            onClick={toggleChatNav}
-            color={showChatNav ? "secondary" : "primary"}
-            className={`chat-nav-button ${showChatNav ? 'active' : ''}`}
-          >
-            <NavigationIcon />
-          </IconButton>
-        </Tooltip>
         
         <IconButton
           onClick={() => setShowSettings(!showSettings)}

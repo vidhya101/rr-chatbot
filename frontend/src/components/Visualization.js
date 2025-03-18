@@ -26,7 +26,7 @@ import { styled } from '@mui/material/styles';
 import DownloadIcon from '@mui/icons-material/Download';
 import FullscreenIcon from '@mui/icons-material/Fullscreen';
 import CloseIcon from '@mui/icons-material/Close';
-import { createDashboard } from '../services/apiService';
+import { apiService } from '../services/apiService';
 
 // Styled components
 const VisualizationContainer = styled(Box)(({ theme }) => ({
@@ -93,9 +93,8 @@ const Visualization = ({ fileData, onClose }) => {
     setError(null);
     
     try {
-      const response = await createDashboard({
-        file_path: filePath,
-        title: `Dashboard for ${fileData.name}`
+      const response = await apiService.post('/api/visualization/dashboard', {
+        file_path: filePath
       });
       
       if (response.data && response.data.success) {
@@ -129,9 +128,9 @@ const Visualization = ({ fileData, onClose }) => {
     setError(null);
     
     try {
-      const response = await createDashboard({
+      const response = await apiService.post('/api/visualization/visualize', {
         file_path: fileData.path,
-        visualization_type: type,
+        type: type,
         params: params
       });
       

@@ -96,20 +96,11 @@ const Chat = () => {
 
     try {
       // Send message to backend
-      const response = await chatService.sendMessage({
-        message: message,
-        chatHistory: chatHistory,
-        model: selectedModel
-      });
+      const response = await chatService.sendMessage(message, currentChatId, selectedModel);
       
       // Add AI response to chat
-      const aiMessage = { 
-        role: 'assistant', 
-        content: response.message,
-        chatId: response.chatId,
-        model: response.model
-      };
-      setChatHistory(prev => [...prev, aiMessage]);
+      const aiMessage = { role: 'assistant', content: response.message };
+      setChatHistory([...chatHistory, userMessage, aiMessage]);
       
       // Update current chat ID if this is a new chat
       if (!currentChatId && response.chatId) {
@@ -120,9 +111,9 @@ const Chat = () => {
       // Add error message to chat
       const errorMessage = { 
         role: 'assistant', 
-        content: error.message || 'Sorry, I encountered an error. Please try again later.' 
+        content: 'Sorry, I encountered an error. Please try again later.' 
       };
-      setChatHistory(prev => [...prev, errorMessage]);
+      setChatHistory([...chatHistory, userMessage, errorMessage]);
     } finally {
       setLoading(false);
     }

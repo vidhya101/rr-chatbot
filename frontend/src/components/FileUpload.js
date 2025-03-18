@@ -19,8 +19,11 @@ import {
   Alert
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
-import { CloudUpload as CloudUploadIcon, Delete as DeleteIcon, Visibility as VisibilityIcon, BarChart as BarChartIcon } from '@mui/icons-material';
-import { uploadFile } from '../services/apiService';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import DeleteIcon from '@mui/icons-material/Delete';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import BarChartIcon from '@mui/icons-material/BarChart';
+import { apiService } from '../services/apiService';
 import Visualization from './Visualization';
 
 const UploadBox = styled(Paper)(({ theme }) => ({
@@ -106,20 +109,24 @@ const FileUpload = ({ onFileUpload, onFileSelect }) => {
     }
 
     setUploading(true);
+    setUploadProgress(0);
     setError(null);
 
     try {
       const formData = new FormData();
-      files.forEach(file => {
-        formData.append('files', file);
+      
+      files.forEach((file, index) => {
+        formData.append(`file${index}`, file);
       });
 
-      const onUploadProgress = (progressEvent) => {
-        const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-        setUploadProgress(percentCompleted);
-      };
-
-      const response = await uploadFile(formData, onUploadProgress);
+      const response = await apiService.post('/api/files/upload', formData, {
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round(
+            (progressEvent.loaded * 100) / progressEvent.total
+          );
+          setUploadProgress(percentCompleted);
+        },
+      });
 
       if (response.data && response.data.success) {
         // Call the onFileUpload callback if provided
@@ -172,22 +179,29 @@ const FileUpload = ({ onFileUpload, onFileSelect }) => {
 
   const handleVisualizeFile = async (file) => {
     try {
-      setShowVisualization(true);
-      
-      // Use the named export uploadFile instead of apiService.uploadFile
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      const response = await uploadFile(formData);
-      
-      if (response.data && response.data.success) {
-        setSelectedFile(response.data.files[0]);
+      // First upload the file if it's not already uploaded
+      if (!file.path) {
+        setUploading(true);
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const response = await apiService.post('/api/files/upload', formData);
+        
+        if (response.data && response.data.success) {
+          setSelectedFile(response.data.files[0]);
+          setShowVisualization(true);
+        } else {
+          setSnackbar({
+            open: true,
+            message: response.data?.error || 'Failed to upload file for visualization',
+            severity: 'error'
+          });
+        }
+        setUploading(false);
       } else {
-        setSnackbar({
-          open: true,
-          message: response.data?.error || 'Failed to upload file for visualization',
-          severity: 'error'
-        });
+        // File is already uploaded
+        setSelectedFile(file);
+        setShowVisualization(true);
       }
     } catch (err) {
       console.error('Error preparing file for visualization:', err);
@@ -196,8 +210,7 @@ const FileUpload = ({ onFileUpload, onFileSelect }) => {
         message: 'Error preparing file for visualization',
         severity: 'error'
       });
-    } finally {
-      setShowVisualization(false);
+      setUploading(false);
     }
   };
 
