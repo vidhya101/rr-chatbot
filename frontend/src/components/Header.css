@@ -1,0 +1,100 @@
+.header {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+  background-color: #ffffff !important;
+  color: #333333 !important;
+  transition: all 0.3s ease;
+}
+
+.header.dark-mode {
+  background-color: #1e1e1e !important;
+  color: #f5f5f5 !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3) !important;
+}
+
+.header .MuiToolbar-root {
+  padding-left: 16px;
+  padding-right: 16px;
+  min-height: 64px;
+}
+
+.logo {
+  margin-left: 16px;
+  font-weight: 600 !important;
+}
+
+.logo a {
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.logo a:hover {
+  color: #4a90e2;
+}
+
+.header-spacer {
+  flex-grow: 1;
+}
+
+.active-model {
+  margin-left: 24px;
+  padding: 4px 12px;
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 16px;
+}
+
+.header.dark-mode .active-model {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.model-name {
+  font-weight: 600;
+  color: #4a90e2;
+}
+
+.header.dark-mode .model-name {
+  color: #64b5f6;
+}
+
+.theme-toggle {
+  margin-right: 8px !important;
+}
+
+.account-button {
+  margin-left: 8px !important;
+}
+
+.user-avatar {
+  width: 32px !important;
+  height: 32px !important;
+}
+
+.auth-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.login-button {
+  margin-right: 8px !important;
+}
+
+.user-info {
+  padding: 12px 16px !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.menu-icon {
+  margin-right: 8px;
+  opacity: 0.7;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .active-model {
+    display: none;
+  }
+  
+  .auth-buttons .register-button {
+    display: none;
+  }
+} 

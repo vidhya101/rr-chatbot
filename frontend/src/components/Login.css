@@ -1,0 +1,135 @@
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 24px;
+  background-color: #f9f9f9;
+}
+
+.login-container.dark-mode {
+  background-color: #121212;
+  color: #f5f5f5;
+}
+
+.login-paper {
+  width: 100%;
+  max-width: 450px;
+  padding: 32px;
+  background-color: #ffffff !important;
+}
+
+.login-container.dark-mode .login-paper {
+  background-color: #1e1e1e !important;
+  color: #f5f5f5;
+}
+
+.login-title {
+  text-align: center;
+  margin-bottom: 8px !important;
+  font-weight: 600 !important;
+}
+
+.login-subtitle {
+  text-align: center;
+  margin-bottom: 24px !important;
+}
+
+.login-alert {
+  margin-bottom: 16px !important;
+}
+
+.login-form {
+  margin-bottom: 24px;
+}
+
+.login-options {
+  display: flex;
+  justify-content: flex-end;
+  margin: 8px 0 16px;
+}
+
+.forgot-password-link {
+  color: #4a90e2;
+  text-decoration: none;
+  font-size: 14px;
+  transition: color 0.2s;
+}
+
+.login-container.dark-mode .forgot-password-link {
+  color: #64b5f6;
+}
+
+.forgot-password-link:hover {
+  text-decoration: underline;
+}
+
+.login-button {
+  margin-top: 16px !important;
+  height: 48px;
+}
+
+.login-divider {
+  margin: 24px 0 !important;
+}
+
+.social-login {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.social-button {
+  width: 100%;
+  text-transform: none !important;
+  justify-content: flex-start !important;
+  padding: 10px 16px !important;
+}
+
+.social-button.google {
+  color: #db4437 !important;
+  border-color: #db4437 !important;
+}
+
+.social-button.github {
+  color: #333 !important;
+  border-color: #333 !important;
+}
+
+.login-container.dark-mode .social-button.github {
+  color: #fff !important;
+  border-color: #fff !important;
+}
+
+.social-button.twitter {
+  color: #1da1f2 !important;
+  border-color: #1da1f2 !important;
+}
+
+.register-prompt {
+  text-align: center;
+  margin-top: 16px;
+}
+
+.register-link {
+  color: #4a90e2;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.login-container.dark-mode .register-link {
+  color: #64b5f6;
+}
+
+.register-link:hover {
+  text-decoration: underline;
+}
+
+/* Responsive adjustments */
+@media (max-width: 480px) {
+  .login-paper {
+    padding: 24px 16px;
+  }
+} 

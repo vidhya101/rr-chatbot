@@ -1,0 +1,148 @@
+.settings-container {
+  padding: 24px;
+  min-height: calc(100vh - 64px);
+  background-color: #f9f9f9;
+}
+
+.settings-container.dark-mode {
+  background-color: #121212;
+  color: #f5f5f5;
+}
+
+.settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding: 16px 24px;
+  background-color: #ffffff !important;
+}
+
+.settings-container.dark-mode .settings-header {
+  background-color: #1e1e1e !important;
+  color: #f5f5f5;
+}
+
+.settings-title {
+  font-weight: 600 !important;
+}
+
+.settings-content {
+  display: flex;
+  gap: 24px;
+}
+
+.settings-sidebar {
+  width: 240px;
+  background-color: #ffffff !important;
+}
+
+.settings-container.dark-mode .settings-sidebar {
+  background-color: #1e1e1e !important;
+  color: #f5f5f5;
+}
+
+.settings-tabs {
+  height: 100%;
+  border-right: 1px solid #e0e0e0;
+}
+
+.settings-container.dark-mode .settings-tabs {
+  border-right-color: #333;
+}
+
+.settings-main {
+  flex: 1;
+  padding: 24px;
+  background-color: #ffffff !important;
+}
+
+.settings-container.dark-mode .settings-main {
+  background-color: #1e1e1e !important;
+  color: #f5f5f5;
+}
+
+.settings-section-title {
+  margin-bottom: 16px !important;
+  font-weight: 500 !important;
+}
+
+.settings-divider {
+  margin: 24px 0 !important;
+}
+
+.slider-action {
+  width: 200px;
+}
+
+.settings-slider {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.select-action {
+  min-width: 150px;
+}
+
+.danger-zone {
+  color: #f44336 !important;
+}
+
+.danger-zone-content {
+  padding: 16px;
+  border: 1px solid #f44336;
+  border-radius: 4px;
+  margin-top: 16px;
+}
+
+.delete-confirmation {
+  margin-top: 16px;
+}
+
+.delete-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .settings-container {
+    padding: 16px;
+  }
+  
+  .settings-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 16px;
+  }
+  
+  .save-settings-button {
+    width: 100%;
+  }
+  
+  .settings-content {
+    flex-direction: column;
+  }
+  
+  .settings-sidebar {
+    width: 100%;
+  }
+  
+  .settings-tabs {
+    display: flex;
+    border-right: none;
+    border-bottom: 1px solid #e0e0e0;
+    overflow-x: auto;
+  }
+  
+  .settings-container.dark-mode .settings-tabs {
+    border-bottom-color: #333;
+  }
+  
+  .slider-action {
+    width: 150px;
+  }
+} 

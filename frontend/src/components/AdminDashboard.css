@@ -1,0 +1,107 @@
+.admin-dashboard {
+  padding: 24px 0;
+  min-height: calc(100vh - 64px);
+  background-color: #f9f9f9;
+}
+
+.admin-dashboard.dark-mode {
+  background-color: #121212;
+  color: #f5f5f5;
+}
+
+.admin-title {
+  margin-bottom: 24px !important;
+  font-weight: 600 !important;
+}
+
+.admin-paper {
+  background-color: #ffffff !important;
+  margin-bottom: 24px;
+}
+
+.admin-dashboard.dark-mode .admin-paper {
+  background-color: #1e1e1e !important;
+  color: #f5f5f5;
+}
+
+.admin-tabs {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.admin-dashboard.dark-mode .admin-tabs {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.stat-card {
+  height: 100%;
+  text-align: center;
+  padding: 16px;
+  transition: transform 0.3s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+}
+
+.admin-dashboard.dark-mode .stat-card {
+  background-color: #2d2d2d !important;
+  color: #f5f5f5;
+}
+
+.section-title {
+  margin-top: 32px !important;
+  margin-bottom: 16px !important;
+}
+
+.users-list-container {
+  margin-top: 16px;
+}
+
+.admin-dashboard.dark-mode .users-list-container {
+  background-color: #2d2d2d !important;
+  color: #f5f5f5;
+}
+
+.role-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 12px;
+  margin-left: 8px;
+  text-transform: uppercase;
+}
+
+.role-badge.admin {
+  background-color: #f44336;
+  color: white;
+}
+
+.role-badge.user {
+  background-color: #4caf50;
+  color: white;
+}
+
+.role-badge.moderator {
+  background-color: #ff9800;
+  color: white;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .admin-dashboard {
+    padding: 16px 0;
+  }
+  
+  .admin-title {
+    margin-bottom: 16px !important;
+  }
+  
+  .admin-tabs {
+    overflow-x: auto;
+  }
+  
+  .section-title {
+    margin-top: 24px !important;
+  }
+} 

@@ -1,0 +1,91 @@
+models:
+  # Cloud Models
+  claude-3-sonnet:
+    provider: claude
+    model_id: claude-3-sonnet
+    max_tokens: 2048
+    temperature: 0.7
+    priority: 1
+    is_active: true  # Activated with Claude API key
+
+  mistral-medium:
+    provider: mistral
+    model_id: mistral-medium
+    max_tokens: 2048
+    temperature: 0.7
+    priority: 2
+    is_active: true  # Activated with Mistral API key
+
+  huggingface-mixtral:
+    provider: huggingface
+    model_id: mistralai/Mixtral-8x7B-Instruct-v0.1
+    max_tokens: 2048
+    temperature: 0.7
+    priority: 3
+    is_active: true  # Activated with Hugging Face API key
+
+  # Ollama Local Models
+  mixtral-local:
+    provider: ollama
+    model_id: mixtral
+    api_base: http://localhost:11434
+    max_tokens: 4096
+    temperature: 0.7
+    priority: 4
+    is_active: true
+
+  mistral-local:
+    provider: ollama
+    model_id: mistral
+    api_base: http://localhost:11434
+    max_tokens: 4096
+    temperature: 0.7
+    priority: 5
+    is_active: true
+
+  llama2-local:
+    provider: ollama
+    model_id: llama2
+    api_base: http://localhost:11434
+    max_tokens: 4096
+    temperature: 0.7
+    priority: 6
+    is_active: true
+
+  phi4-local:
+    provider: ollama
+    model_id: phi4
+    api_base: http://localhost:11434
+    max_tokens: 2048
+    temperature: 0.7
+    priority: 7
+    is_active: true
+
+  deepseek-coder:
+    provider: ollama
+    model_id: deepseek-coder-v2:236b
+    api_base: http://localhost:11434
+    max_tokens: 4096
+    temperature: 0.7
+    priority: 8
+    is_active: true
+    description: "Specialized for code generation and analysis"
+
+  codellama-13b:
+    provider: ollama
+    model_id: codellama:13b
+    api_base: http://localhost:11434
+    max_tokens: 4096
+    temperature: 0.7
+    priority: 9
+    is_active: true
+    description: "Optimized for code completion and generation"
+
+settings:
+  fallback_strategy: priority  # priority, random, or latency
+  max_retries: 3
+  retry_delay: 1
+  health_check_interval: 60  # seconds
+  switch_threshold:
+    error_count: 3
+    latency: 5.0  # seconds 

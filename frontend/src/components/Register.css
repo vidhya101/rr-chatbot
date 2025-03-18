@@ -1,0 +1,133 @@
+.register-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 24px;
+  background-color: #f9f9f9;
+}
+
+.register-container.dark-mode {
+  background-color: #121212;
+  color: #f5f5f5;
+}
+
+.register-paper {
+  width: 100%;
+  max-width: 500px;
+  padding: 32px;
+  background-color: #ffffff !important;
+}
+
+.register-container.dark-mode .register-paper {
+  background-color: #1e1e1e !important;
+  color: #f5f5f5;
+}
+
+.register-title {
+  text-align: center;
+  margin-bottom: 8px !important;
+  font-weight: 600 !important;
+}
+
+.register-subtitle {
+  text-align: center;
+  margin-bottom: 24px !important;
+}
+
+.register-alert {
+  margin-bottom: 16px !important;
+}
+
+.register-form {
+  margin-bottom: 24px;
+}
+
+.terms-checkbox {
+  margin-top: 16px !important;
+  margin-bottom: 16px !important;
+}
+
+.terms-link {
+  color: #4a90e2;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.register-container.dark-mode .terms-link {
+  color: #64b5f6;
+}
+
+.terms-link:hover {
+  text-decoration: underline;
+}
+
+.register-button {
+  margin-top: 16px !important;
+  height: 48px;
+}
+
+.register-divider {
+  margin: 24px 0 !important;
+}
+
+.social-register {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.social-button {
+  width: 100%;
+  text-transform: none !important;
+  justify-content: flex-start !important;
+  padding: 10px 16px !important;
+}
+
+.social-button.google {
+  color: #db4437 !important;
+  border-color: #db4437 !important;
+}
+
+.social-button.github {
+  color: #333 !important;
+  border-color: #333 !important;
+}
+
+.register-container.dark-mode .social-button.github {
+  color: #fff !important;
+  border-color: #fff !important;
+}
+
+.social-button.twitter {
+  color: #1da1f2 !important;
+  border-color: #1da1f2 !important;
+}
+
+.login-prompt {
+  text-align: center;
+  margin-top: 16px;
+}
+
+.login-link {
+  color: #4a90e2;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.register-container.dark-mode .login-link {
+  color: #64b5f6;
+}
+
+.login-link:hover {
+  text-decoration: underline;
+}
+
+/* Responsive adjustments */
+@media (max-width: 480px) {
+  .register-paper {
+    padding: 24px 16px;
+  }
+} 

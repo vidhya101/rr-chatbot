@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        /* Modern dashboard styling */
+        :root {
+            --primary-color: #2563eb;
+            --secondary-color: #1e40af;
+            --text-color: #1f2937;
+            --background-color: #f3f4f6;
+            --card-background: #ffffff;
+            --border-color: #e5e7eb;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.5;
+            color: var(--text-color);
+            background-color: var(--background-color);
+            margin: 0;
+            padding: 2rem;
+        }
+        
+        .dashboard {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .dashboard-header {
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        
+        .dashboard-title {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: var(--primary-color);
+            margin: 0;
+        }
+        
+        .dashboard-description {
+            font-size: 1.1rem;
+            color: var(--text-color);
+            opacity: 0.8;
+            margin-top: 0.5rem;
+        }
+        
+        .dashboard-timestamp {
+            font-size: 0.9rem;
+            color: var(--text-color);
+            opacity: 0.6;
+            margin-top: 0.5rem;
+        }
+        
+        .visualizations {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .visualization-card {
+            background-color: var(--card-background);
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+        }
+        
+        .visualization-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin: 0 0 0.5rem 0;
+        }
+        
+        .visualization-description {
+            font-size: 0.9rem;
+            color: var(--text-color);
+            opacity: 0.8;
+            margin-bottom: 1rem;
+        }
+        
+        .visualization-image {
+            width: 100%;
+            height: auto;
+            border-radius: 0.25rem;
+        }
+        
+        .insights {
+            background-color: var(--card-background);
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+            margin-top: 2rem;
+        }
+        
+        .insights-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin: 0 0 1rem 0;
+            color: var(--primary-color);
+        }
+        
+        .insights-section {
+            margin-bottom: 1.5rem;
+        }
+        
+        .insights-section-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin: 0 0 0.5rem 0;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+        
+        th, td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        th {
+            background-color: var(--background-color);
+            font-weight: 600;
+        }
+        
+        @media print {
+            body {
+                background-color: white;
+                padding: 0;
+            }
+            
+            .dashboard {
+                max-width: none;
+            }
+            
+            .visualization-card,
+            .insights {
+                break-inside: avoid;
+                box-shadow: none;
+                border: 1px solid var(--border-color);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <header class="dashboard-header">
+            <h1 class="dashboard-title">{{ title }}</h1>
+            {% if description %}
+            <p class="dashboard-description">{{ description }}</p>
+            {% endif %}
+            <p class="dashboard-timestamp">Generated on {{ timestamp }}</p>
+        </header>
+        
+        <div class="visualizations">
+            {% for viz in visualizations %}
+            <div class="visualization-card">
+                <h2 class="visualization-title">{{ viz.title }}</h2>
+                {% if viz.description %}
+                <p class="visualization-description">{{ viz.description }}</p>
+                {% endif %}
+                <img class="visualization-image" src="data:image/png;base64,{{ viz.image }}" alt="{{ viz.title }}">
+            </div>
+            {% endfor %}
+        </div>
+        
+        {% if insights %}
+        <div class="insights">
+            <h2 class="insights-title">Data Insights</h2>
+            
+            {% if insights.summary %}
+            <div class="insights-section">
+                <h3 class="insights-section-title">Summary Statistics</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Metric</th>
+                            {% for column in insights.summary.keys() %}
+                            <th>{{ column }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for metric in insights.summary.values()|first.keys() %}
+                        <tr>
+                            <td>{{ metric }}</td>
+                            {% for column in insights.summary.keys() %}
+                            <td>{{ "%.2f"|format(insights.summary[column][metric]) }}</td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+            
+            {% if insights.missing_values %}
+            <div class="insights-section">
+                <h3 class="insights-section-title">Missing Values</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Column</th>
+                            <th>Missing Count</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for column, count in insights.missing_values.items() %}
+                        <tr>
+                            <td>{{ column }}</td>
+                            <td>{{ count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+            
+            {% if insights.correlations %}
+            <div class="insights-section">
+                <h3 class="insights-section-title">Correlations</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Variable</th>
+                            {% for column in insights.correlations.keys() %}
+                            <th>{{ column }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for var1, corrs in insights.correlations.items() %}
+                        <tr>
+                            <td>{{ var1 }}</td>
+                            {% for var2 in insights.correlations.keys() %}
+                            <td>{{ "%.2f"|format(corrs[var2]) }}</td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html> 
