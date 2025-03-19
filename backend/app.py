@@ -79,12 +79,6 @@ from routes.dashboard_routes import dashboard_bp
 from routes.feedback_routes import feedback_routes
 from routes.visualization_routes import visualization_bp
 
-# Import database configuration
-from models.db import db, init_db
-
-# Import services
-from utils.db_utils import init_db as init_db_utils, start_maintenance_task
-
 # Create Flask app
 app = Flask(__name__)
 
@@ -95,8 +89,20 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB max upload
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URI', 'sqlite:///app.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# JWT Configuration
+app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', str(uuid.uuid4()))
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=1)
+app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=30)
+
+# Initialize extensions
+db = SQLAlchemy(app)
+migrate = Migrate(app, db)
+jwt = JWTManager(app)
+socketio = SocketIO(app, cors_allowed_origins="*")
+
 # Ensure upload folder exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], 'visualizations'), exist_ok=True)
 
 # Enable CORS
 CORS(app)
@@ -110,12 +116,6 @@ app.register_blueprint(user_bp, url_prefix='/api/users')
 app.register_blueprint(dashboard_bp, url_prefix='/api/dashboard')
 app.register_blueprint(feedback_routes, url_prefix='/api/feedback')
 app.register_blueprint(visualization_bp, url_prefix='/api/visualization')
-
-# Initialize database
-init_db(app)
-
-# Start database maintenance task
-start_maintenance_task()
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -144,9 +144,13 @@ def index():
 
 # Run the app
 if __name__ == '__main__':
+    # Initialize database tables
+    with app.app_context():
+        db.create_all()
+    
     # Run the app
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') == 'development'
     
     logger.info(f"Starting server on port {port}, debug={debug}")
-    app.run(host='0.0.0.0', port=port, debug=debug) 
+    socketio.run(app, host='0.0.0.0', port=port, debug=debug) 

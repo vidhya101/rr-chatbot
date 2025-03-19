@@ -23,7 +23,7 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import DeleteIcon from '@mui/icons-material/Delete';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import BarChartIcon from '@mui/icons-material/BarChart';
-import { apiService } from '../services/apiService';
+import apiService from '../services/apiService';
 import Visualization from './Visualization';
 
 const UploadBox = styled(Paper)(({ theme }) => ({
@@ -47,7 +47,6 @@ const FileUpload = ({ onFileUpload, onFileSelect }) => {
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [error, setError] = useState(null);
   const [previewFile, setPreviewFile] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
   const [showVisualization, setShowVisualization] = useState(false);
@@ -110,7 +109,6 @@ const FileUpload = ({ onFileUpload, onFileSelect }) => {
 
     setUploading(true);
     setUploadProgress(0);
-    setError(null);
 
     try {
       const formData = new FormData();
@@ -119,19 +117,17 @@ const FileUpload = ({ onFileUpload, onFileSelect }) => {
         formData.append(`file${index}`, file);
       });
 
-      const response = await apiService.post('/api/files/upload', formData, {
-        onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round(
-            (progressEvent.loaded * 100) / progressEvent.total
-          );
-          setUploadProgress(percentCompleted);
-        },
+      const response = await apiService.uploadFile(formData, (progressEvent) => {
+        const percentCompleted = Math.round(
+          (progressEvent.loaded * 100) / progressEvent.total
+        );
+        setUploadProgress(percentCompleted);
       });
 
-      if (response.data && response.data.success) {
+      if (response && response.success) {
         // Call the onFileUpload callback if provided
         if (onFileUpload) {
-          onFileUpload(response.data.files);
+          onFileUpload(response.files);
         }
         
         setSnackbar({
@@ -143,16 +139,14 @@ const FileUpload = ({ onFileUpload, onFileSelect }) => {
         // Clear the file list after successful upload
         setFiles([]);
       } else {
-        setError(response.data?.error || 'Upload failed');
         setSnackbar({
           open: true,
-          message: response.data?.error || 'Upload failed',
+          message: response?.error || 'Upload failed',
           severity: 'error'
         });
       }
     } catch (err) {
       console.error('Error uploading files:', err);
-      setError('Error uploading files. Please try again.');
       setSnackbar({
         open: true,
         message: 'Error uploading files. Please try again.',
@@ -185,15 +179,15 @@ const FileUpload = ({ onFileUpload, onFileSelect }) => {
         const formData = new FormData();
         formData.append('file', file);
         
-        const response = await apiService.post('/api/files/upload', formData);
+        const response = await apiService.uploadFile(formData);
         
-        if (response.data && response.data.success) {
-          setSelectedFile(response.data.files[0]);
+        if (response && response.success) {
+          setSelectedFile(response.files[0]);
           setShowVisualization(true);
         } else {
           setSnackbar({
             open: true,
-            message: response.data?.error || 'Failed to upload file for visualization',
+            message: response?.error || 'Failed to upload file for visualization',
             severity: 'error'
           });
         }

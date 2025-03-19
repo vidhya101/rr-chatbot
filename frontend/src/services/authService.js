@@ -1,19 +1,44 @@
 import api from './apiService';
 
+// Constants
+const TOKEN_KEY = 'token';
+const USER_KEY = 'user';
+const TOKEN_EXPIRY_KEY = 'tokenExpiry';
+
+// Helper functions
+const setToken = (token) => {
+  localStorage.setItem(TOKEN_KEY, token);
+  // Set token expiry to 24 hours from now
+  const expiry = new Date().getTime() + 24 * 60 * 60 * 1000;
+  localStorage.setItem(TOKEN_EXPIRY_KEY, expiry.toString());
+};
+
+const clearAuthData = () => {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(TOKEN_EXPIRY_KEY);
+};
+
+const isTokenExpired = () => {
+  const expiry = localStorage.getItem(TOKEN_EXPIRY_KEY);
+  if (!expiry) return true;
+  return new Date().getTime() > parseInt(expiry);
+};
+
 // Register a new user
 export const register = async (userData) => {
   try {
     const response = await api.post('/auth/register', userData);
     
-    // Store token in localStorage
     if (response.data.token) {
-      localStorage.setItem('token', response.data.token);
+      setToken(response.data.token);
+      localStorage.setItem(USER_KEY, JSON.stringify(response.data.user));
     }
     
-    return response.data.user;
+    return response.data;
   } catch (error) {
-    console.error('Registration error:', error);
-    throw error.response?.data || error;
+    const errorMessage = error.response?.data?.message || 'Registration failed';
+    throw new Error(errorMessage);
   }
 };
 
@@ -22,15 +47,15 @@ export const login = async (email, password) => {
   try {
     const response = await api.post('/auth/login', { email, password });
     
-    // Store token in localStorage
     if (response.data.token) {
-      localStorage.setItem('token', response.data.token);
+      setToken(response.data.token);
+      localStorage.setItem(USER_KEY, JSON.stringify(response.data.user));
     }
     
-    return response.data.user;
+    return response.data;
   } catch (error) {
-    console.error('Login error:', error);
-    throw error.response?.data || error;
+    const errorMessage = error.response?.data?.message || 'Login failed';
+    throw new Error(errorMessage);
   }
 };
 
@@ -54,24 +79,24 @@ export const loginWithProvider = async (provider) => {
 };
 
 // Logout user
-export const logout = () => {
+export const logout = async () => {
   try {
-    // Remove token from localStorage
-    localStorage.removeItem('token');
-    
-    // In a real app, you might also want to invalidate the token on the server
-    // api.post('/auth/logout');
-    
+    // Call logout endpoint to invalidate token on server
+    await api.post('/auth/logout');
+    clearAuthData();
     return true;
   } catch (error) {
     console.error('Logout error:', error);
-    return false;
+    // Still clear local data even if server call fails
+    clearAuthData();
+    return true;
   }
 };
 
 // Check if user is authenticated
 export const isAuthenticated = () => {
-  return !!localStorage.getItem('token');
+  const token = localStorage.getItem(TOKEN_KEY);
+  return !!token && !isTokenExpired();
 };
 
 // Get current user
@@ -82,9 +107,15 @@ export const getCurrentUser = async () => {
     }
     
     const response = await api.get('/auth/me');
-    return response.data;
+    const userData = response.data;
+    localStorage.setItem(USER_KEY, JSON.stringify(userData));
+    return userData;
   } catch (error) {
     console.error('Get current user error:', error);
+    // If token is invalid, clear auth data
+    if (error.response?.status === 401) {
+      clearAuthData();
+    }
     return null;
   }
 };
@@ -95,8 +126,8 @@ export const requestPasswordReset = async (email) => {
     const response = await api.post('/auth/forgot-password', { email });
     return response.data;
   } catch (error) {
-    console.error('Password reset request error:', error);
-    throw error.response?.data || error;
+    const errorMessage = error.response?.data?.message || 'Password reset request failed';
+    throw new Error(errorMessage);
   }
 };
 
@@ -109,8 +140,8 @@ export const resetPassword = async (token, newPassword) => {
     });
     return response.data;
   } catch (error) {
-    console.error('Password reset error:', error);
-    throw error.response?.data || error;
+    const errorMessage = error.response?.data?.message || 'Password reset failed';
+    throw new Error(errorMessage);
   }
 };
 
@@ -123,8 +154,8 @@ export const changePassword = async (currentPassword, newPassword) => {
     });
     return response.data;
   } catch (error) {
-    console.error('Change password error:', error);
-    throw error.response?.data || error;
+    const errorMessage = error.response?.data?.message || 'Password change failed';
+    throw new Error(errorMessage);
   }
 };
 
@@ -134,8 +165,23 @@ export const verifyEmail = async (token) => {
     const response = await api.post('/auth/verify-email', { token });
     return response.data;
   } catch (error) {
-    console.error('Email verification error:', error);
-    throw error.response?.data || error;
+    const errorMessage = error.response?.data?.message || 'Email verification failed';
+    throw new Error(errorMessage);
+  }
+};
+
+// Refresh token
+export const refreshToken = async () => {
+  try {
+    const response = await api.post('/auth/refresh-token');
+    if (response.data.token) {
+      setToken(response.data.token);
+    }
+    return response.data;
+  } catch (error) {
+    console.error('Token refresh error:', error);
+    clearAuthData();
+    throw new Error('Session expired. Please login again.');
   }
 };
 
@@ -150,7 +196,8 @@ const authService = {
   requestPasswordReset,
   resetPassword,
   changePassword,
-  verifyEmail
+  verifyEmail,
+  refreshToken
 };
 
 export default authService; 

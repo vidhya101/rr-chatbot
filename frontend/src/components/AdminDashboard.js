@@ -9,7 +9,6 @@ import {
   Grid,
   Card,
   CardContent,
-  CardHeader,
   Button,
   List,
   ListItem,
@@ -27,7 +26,8 @@ import {
   DialogContentText,
   DialogTitle,
   Snackbar,
-  Alert
+  Alert,
+  CircularProgress
 } from '@mui/material';
 
 // Material UI Icons
@@ -48,15 +48,6 @@ const mockUsers = [
   { id: 2, username: 'user1', email: 'user1@example.com', role: 'user', lastLogin: '2023-03-14T14:20:00Z' },
   { id: 3, username: 'user2', email: 'user2@example.com', role: 'user', lastLogin: '2023-03-13T09:15:00Z' }
 ];
-
-const mockStats = {
-  totalUsers: 3,
-  activeUsers: 2,
-  totalChats: 15,
-  totalMessages: 120,
-  totalFiles: 8,
-  totalDashboards: 4
-};
 
 const TabPanel = (props) => {
   const { children, value, index, ...other } = props;
@@ -81,22 +72,49 @@ const TabPanel = (props) => {
 const AdminDashboard = ({ darkMode }) => {
   const [tabValue, setTabValue] = useState(0);
   const [users, setUsers] = useState(mockUsers);
-  const [stats, setStats] = useState(mockStats);
+  const [stats, setStats] = useState({
+    totalUsers: 0,
+    totalChats: 0,
+    totalFiles: 0,
+    activeUsers: 0,
+    recentActivity: []
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'info'
+  });
 
-  // Fetch data on component mount
   useEffect(() => {
-    // In a real app, you would fetch data from your API
-    // Example:
-    // const fetchUsers = async () => {
-    //   const response = await api.get('/admin/users');
-    //   setUsers(response.data);
-    // };
-    // fetchUsers();
+    fetchStats();
   }, []);
+
+  const fetchStats = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/admin/stats');
+      if (!response.ok) {
+        throw new Error('Failed to fetch stats');
+      }
+      const data = await response.json();
+      setStats(data);
+    } catch (err) {
+      console.error('Error fetching stats:', err);
+      setError('Failed to load dashboard data');
+      setSnackbar({
+        open: true,
+        message: 'Failed to load dashboard data',
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -178,238 +196,248 @@ const AdminDashboard = ({ darkMode }) => {
         </Typography>
         
         <Paper elevation={3} className="admin-paper">
-          <Tabs
-            value={tabValue}
-            onChange={handleTabChange}
-            indicatorColor="primary"
-            textColor="primary"
-            variant="fullWidth"
-            className="admin-tabs"
-          >
-            <Tab icon={<DashboardIcon />} label="Overview" />
-            <Tab icon={<PeopleIcon />} label="Users" />
-            <Tab icon={<ChatIcon />} label="Chats" />
-            <Tab icon={<StorageIcon />} label="Files" />
-            <Tab icon={<SettingsIcon />} label="Settings" />
-          </Tabs>
-          
-          <TabPanel value={tabValue} index={0}>
-            <Typography variant="h6" gutterBottom>
-              System Overview
-            </Typography>
-            
-            <Grid container spacing={3}>
-              <Grid item xs={12} sm={6} md={4}>
-                <Card className="stat-card">
-                  <CardContent>
-                    <Typography variant="h5" component="div">
-                      {stats.totalUsers}
-                    </Typography>
-                    <Typography color="textSecondary">
-                      Total Users
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
+          {loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+              <CircularProgress />
+            </Box>
+          ) : error ? (
+            <Alert severity="error" sx={{ m: 2 }}>{error}</Alert>
+          ) : (
+            <>
+              <Tabs
+                value={tabValue}
+                onChange={handleTabChange}
+                indicatorColor="primary"
+                textColor="primary"
+                variant="fullWidth"
+                className="admin-tabs"
+              >
+                <Tab icon={<DashboardIcon />} label="Overview" />
+                <Tab icon={<PeopleIcon />} label="Users" />
+                <Tab icon={<ChatIcon />} label="Chats" />
+                <Tab icon={<StorageIcon />} label="Files" />
+                <Tab icon={<SettingsIcon />} label="Settings" />
+              </Tabs>
               
-              <Grid item xs={12} sm={6} md={4}>
-                <Card className="stat-card">
-                  <CardContent>
-                    <Typography variant="h5" component="div">
-                      {stats.totalChats}
-                    </Typography>
-                    <Typography color="textSecondary">
-                      Total Chats
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
+              <TabPanel value={tabValue} index={0}>
+                <Typography variant="h6" gutterBottom>
+                  System Overview
+                </Typography>
+                
+                <Grid container spacing={3}>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <Card className="stat-card">
+                      <CardContent>
+                        <Typography variant="h5" component="div">
+                          {stats.totalUsers}
+                        </Typography>
+                        <Typography color="textSecondary">
+                          Total Users
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  
+                  <Grid item xs={12} sm={6} md={4}>
+                    <Card className="stat-card">
+                      <CardContent>
+                        <Typography variant="h5" component="div">
+                          {stats.totalChats}
+                        </Typography>
+                        <Typography color="textSecondary">
+                          Total Chats
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  
+                  <Grid item xs={12} sm={6} md={4}>
+                    <Card className="stat-card">
+                      <CardContent>
+                        <Typography variant="h5" component="div">
+                          {stats.totalFiles}
+                        </Typography>
+                        <Typography color="textSecondary">
+                          Total Files
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  
+                  <Grid item xs={12} sm={6} md={4}>
+                    <Card className="stat-card">
+                      <CardContent>
+                        <Typography variant="h5" component="div">
+                          {stats.activeUsers}
+                        </Typography>
+                        <Typography color="textSecondary">
+                          Active Users
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  
+                  <Grid item xs={12} sm={6} md={4}>
+                    <Card className="stat-card">
+                      <CardContent>
+                        <Typography variant="h5" component="div">
+                          {stats.totalMessages}
+                        </Typography>
+                        <Typography color="textSecondary">
+                          Total Messages
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  
+                  <Grid item xs={12} sm={6} md={4}>
+                    <Card className="stat-card">
+                      <CardContent>
+                        <Typography variant="h5" component="div">
+                          {stats.totalDashboards}
+                        </Typography>
+                        <Typography color="textSecondary">
+                          Total Dashboards
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+                
+                <Typography variant="h6" gutterBottom className="section-title">
+                  Quick Actions
+                </Typography>
+                
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      startIcon={<PersonAddIcon />}
+                      fullWidth
+                    >
+                      Add User
+                    </Button>
+                  </Grid>
+                  
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Button
+                      variant="contained"
+                      color="secondary"
+                      startIcon={<SupervisorAccountIcon />}
+                      fullWidth
+                    >
+                      Manage Roles
+                    </Button>
+                  </Grid>
+                  
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      startIcon={<BarChartIcon />}
+                      fullWidth
+                    >
+                      View Reports
+                    </Button>
+                  </Grid>
+                  
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Button
+                      variant="contained"
+                      color="secondary"
+                      startIcon={<SettingsIcon />}
+                      fullWidth
+                    >
+                      System Settings
+                    </Button>
+                  </Grid>
+                </Grid>
+              </TabPanel>
               
-              <Grid item xs={12} sm={6} md={4}>
-                <Card className="stat-card">
-                  <CardContent>
-                    <Typography variant="h5" component="div">
-                      {stats.totalFiles}
-                    </Typography>
-                    <Typography color="textSecondary">
-                      Total Files
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
+              <TabPanel value={tabValue} index={1}>
+                <Typography variant="h6" gutterBottom>
+                  User Management
+                </Typography>
+                
+                <Paper elevation={2} className="users-list-container">
+                  <List>
+                    {users.map((user) => (
+                      <React.Fragment key={user.id}>
+                        <ListItem>
+                          <ListItemText
+                            primary={
+                              <Typography variant="subtitle1">
+                                {user.username} 
+                                <span className={`role-badge ${user.role}`}>
+                                  {user.role}
+                                </span>
+                              </Typography>
+                            }
+                            secondary={
+                              <>
+                                <Typography component="span" variant="body2" color="textPrimary">
+                                  {user.email}
+                                </Typography>
+                                <br />
+                                <Typography component="span" variant="body2" color="textSecondary">
+                                  Last login: {formatDate(user.lastLogin)}
+                                </Typography>
+                              </>
+                            }
+                          />
+                          <ListItemSecondaryAction>
+                            <IconButton 
+                              edge="end" 
+                              aria-label="edit"
+                              onClick={() => handleEditUser(user)}
+                            >
+                              <EditIcon />
+                            </IconButton>
+                            <IconButton 
+                              edge="end" 
+                              aria-label="delete"
+                              onClick={() => handleDeleteUser(user)}
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          </ListItemSecondaryAction>
+                        </ListItem>
+                        <Divider />
+                      </React.Fragment>
+                    ))}
+                  </List>
+                </Paper>
+              </TabPanel>
               
-              <Grid item xs={12} sm={6} md={4}>
-                <Card className="stat-card">
-                  <CardContent>
-                    <Typography variant="h5" component="div">
-                      {stats.activeUsers}
-                    </Typography>
-                    <Typography color="textSecondary">
-                      Active Users
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
+              <TabPanel value={tabValue} index={2}>
+                <Typography variant="h6" gutterBottom>
+                  Chat Management
+                </Typography>
+                <Typography variant="body1">
+                  This section allows you to manage all chat conversations in the system.
+                </Typography>
+              </TabPanel>
               
-              <Grid item xs={12} sm={6} md={4}>
-                <Card className="stat-card">
-                  <CardContent>
-                    <Typography variant="h5" component="div">
-                      {stats.totalMessages}
-                    </Typography>
-                    <Typography color="textSecondary">
-                      Total Messages
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
+              <TabPanel value={tabValue} index={3}>
+                <Typography variant="h6" gutterBottom>
+                  File Management
+                </Typography>
+                <Typography variant="body1">
+                  This section allows you to manage all uploaded files in the system.
+                </Typography>
+              </TabPanel>
               
-              <Grid item xs={12} sm={6} md={4}>
-                <Card className="stat-card">
-                  <CardContent>
-                    <Typography variant="h5" component="div">
-                      {stats.totalDashboards}
-                    </Typography>
-                    <Typography color="textSecondary">
-                      Total Dashboards
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
-            
-            <Typography variant="h6" gutterBottom className="section-title">
-              Quick Actions
-            </Typography>
-            
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6} md={3}>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  startIcon={<PersonAddIcon />}
-                  fullWidth
-                >
-                  Add User
-                </Button>
-              </Grid>
-              
-              <Grid item xs={12} sm={6} md={3}>
-                <Button
-                  variant="contained"
-                  color="secondary"
-                  startIcon={<SupervisorAccountIcon />}
-                  fullWidth
-                >
-                  Manage Roles
-                </Button>
-              </Grid>
-              
-              <Grid item xs={12} sm={6} md={3}>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  startIcon={<BarChartIcon />}
-                  fullWidth
-                >
-                  View Reports
-                </Button>
-              </Grid>
-              
-              <Grid item xs={12} sm={6} md={3}>
-                <Button
-                  variant="contained"
-                  color="secondary"
-                  startIcon={<SettingsIcon />}
-                  fullWidth
-                >
+              <TabPanel value={tabValue} index={4}>
+                <Typography variant="h6" gutterBottom>
                   System Settings
-                </Button>
-              </Grid>
-            </Grid>
-          </TabPanel>
-          
-          <TabPanel value={tabValue} index={1}>
-            <Typography variant="h6" gutterBottom>
-              User Management
-            </Typography>
-            
-            <Paper elevation={2} className="users-list-container">
-              <List>
-                {users.map((user) => (
-                  <React.Fragment key={user.id}>
-                    <ListItem>
-                      <ListItemText
-                        primary={
-                          <Typography variant="subtitle1">
-                            {user.username} 
-                            <span className={`role-badge ${user.role}`}>
-                              {user.role}
-                            </span>
-                          </Typography>
-                        }
-                        secondary={
-                          <>
-                            <Typography component="span" variant="body2" color="textPrimary">
-                              {user.email}
-                            </Typography>
-                            <br />
-                            <Typography component="span" variant="body2" color="textSecondary">
-                              Last login: {formatDate(user.lastLogin)}
-                            </Typography>
-                          </>
-                        }
-                      />
-                      <ListItemSecondaryAction>
-                        <IconButton 
-                          edge="end" 
-                          aria-label="edit"
-                          onClick={() => handleEditUser(user)}
-                        >
-                          <EditIcon />
-                        </IconButton>
-                        <IconButton 
-                          edge="end" 
-                          aria-label="delete"
-                          onClick={() => handleDeleteUser(user)}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </ListItemSecondaryAction>
-                    </ListItem>
-                    <Divider />
-                  </React.Fragment>
-                ))}
-              </List>
-            </Paper>
-          </TabPanel>
-          
-          <TabPanel value={tabValue} index={2}>
-            <Typography variant="h6" gutterBottom>
-              Chat Management
-            </Typography>
-            <Typography variant="body1">
-              This section allows you to manage all chat conversations in the system.
-            </Typography>
-          </TabPanel>
-          
-          <TabPanel value={tabValue} index={3}>
-            <Typography variant="h6" gutterBottom>
-              File Management
-            </Typography>
-            <Typography variant="body1">
-              This section allows you to manage all uploaded files in the system.
-            </Typography>
-          </TabPanel>
-          
-          <TabPanel value={tabValue} index={4}>
-            <Typography variant="h6" gutterBottom>
-              System Settings
-            </Typography>
-            <Typography variant="body1">
-              This section allows you to configure system-wide settings.
-            </Typography>
-          </TabPanel>
+                </Typography>
+                <Typography variant="body1">
+                  This section allows you to configure system-wide settings.
+                </Typography>
+              </TabPanel>
+            </>
+          )}
         </Paper>
       </Container>
       

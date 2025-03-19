@@ -1,25 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import './Settings.css';
-
-// Material UI components
 import {
-  Container,
+  Box,
   Typography,
   Paper,
+  Grid,
   Button,
-  Tabs,
-  Tab,
-  Slider,
-  Select,
-  MenuItem,
-  FormControl,
   TextField,
-  Divider,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
+  Switch,
+  FormControlLabel,
   Snackbar,
   Alert,
   List,
@@ -27,7 +16,13 @@ import {
   ListItemIcon,
   ListItemText,
   ListItemSecondaryAction,
-  Switch
+  Slider,
+  FormControl,
+  Select,
+  MenuItem,
+  Divider,
+  Tabs,
+  Tab
 } from '@mui/material';
 
 // Material UI Icons

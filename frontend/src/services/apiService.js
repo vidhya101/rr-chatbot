@@ -5,13 +5,6 @@
  */
 
 import axios from 'axios';
-import { 
-  getAccessToken, 
-  clearAuth, 
-  // Remove unused imports
-  // getUserId, 
-  // getSessionId 
-} from '../utils/auth';
 
 // Create an axios instance with default config
 const api = axios.create({
@@ -315,4 +308,51 @@ export const sendMessageWithFiles = async (formData, settings = {}) => {
   }
 };
 
-export default api; 
+// Visualization API functions
+export const generateDashboard = async (filePath) => {
+  try {
+    const response = await api.post('/visualization/dashboard', {
+      file_path: filePath
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error generating dashboard:', error);
+    throw error;
+  }
+};
+
+export const generateCustomVisualization = async (filePath, type, params = {}) => {
+  try {
+    const response = await api.post('/visualization/visualize', {
+      file_path: filePath,
+      type: type,
+      params: params
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error generating visualization:', error);
+    throw error;
+  }
+};
+
+// Create a default export with all API functions
+const apiService = {
+  sendMessage,
+  stopGeneration,
+  getChatHistory,
+  listModels,
+  switchModel,
+  uploadFile,
+  listFiles,
+  deleteFile,
+  getDashboards,
+  getDashboard,
+  createDashboard,
+  updateDashboard,
+  deleteDashboard,
+  sendMessageWithFiles,
+  generateDashboard,
+  generateCustomVisualization
+};
+
+export default apiService; 

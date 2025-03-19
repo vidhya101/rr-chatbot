@@ -9,6 +9,11 @@ import time
 import threading
 import queue
 from concurrent.futures import ThreadPoolExecutor
+from anthropic import Anthropic
+from mistralai.client import MistralClient
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import ollama
+from config import Config
 
 # For Mistral AI
 try:
@@ -517,4 +522,89 @@ def summarize_text(text, max_length=100):
         return text[:max_length] + "..." if len(text) > max_length else text
 
 # Initialize Ollama health check on module load
-check_ollama_health() 
+check_ollama_health()
+
+class AIService:
+    def __init__(self):
+        self.config = Config()
+        self.current_model = self.config.get_active_model()
+        
+    def _check_ollama_available(self):
+        """Check if Ollama server is available"""
+        try:
+            response = requests.get(f"{self.config.OLLAMA_HOST}/api/tags")
+            return response.status_code == 200
+        except:
+            return False
+            
+    def _get_appropriate_model(self, task_type='chat'):
+        """Get appropriate model based on task type and availability"""
+        if task_type == 'data_analysis' and self.config.ENABLE_PRIVATE_DATA_ANALYSIS:
+            return 'ollama', self.config.MODELS['ollama']['data_analysis']
+            
+        if self.current_model == 'ollama':
+            if not self._check_ollama_available():
+                # Try to fall back to API services if Ollama is unavailable
+                for service in ['claude', 'mistral', 'huggingface']:
+                    if self.config.MODELS[service]['api_key_required'] and getattr(self.config, f"{service.upper()}_API_KEY"):
+                        return service, self.config.MODELS[service]['model']
+                raise RuntimeError("Ollama is unavailable and no API keys are configured")
+            return 'ollama', self.config.MODELS['ollama']['chat']
+            
+        return self.current_model, self.config.MODELS[self.current_model]['model']
+        
+    async def generate_response(self, prompt, task_type='chat'):
+        """Generate response using the appropriate AI model"""
+        service, model = self._get_appropriate_model(task_type)
+        
+        try:
+            if service == 'ollama':
+                response = ollama.chat(model=model, messages=[{'role': 'user', 'content': prompt}])
+                return response['message']['content']
+                
+            elif service == 'claude':
+                client = Anthropic(api_key=self.config.ANTHROPIC_API_KEY)
+                response = client.messages.create(
+                    model=model,
+                    max_tokens=1000,
+                    messages=[{'role': 'user', 'content': prompt}]
+                )
+                return response.content[0].text
+                
+            elif service == 'mistral':
+                client = MistralClient(api_key=self.config.MISTRAL_API_KEY)
+                response = client.chat(
+                    model=model,
+                    messages=[{'role': 'user', 'content': prompt}]
+                )
+                return response.messages[0].content
+                
+            elif service == 'huggingface':
+                tokenizer = AutoTokenizer.from_pretrained(model, token=self.config.HUGGINGFACE_API_KEY)
+                model = AutoModelForCausalLM.from_pretrained(model, token=self.config.HUGGINGFACE_API_KEY)
+                inputs = tokenizer(prompt, return_tensors="pt")
+                outputs = model.generate(**inputs, max_length=1000)
+                return tokenizer.decode(outputs[0], skip_special_tokens=True)
+                
+        except Exception as e:
+            logger.error(f"Error generating response with {service}: {str(e)}")
+            if service != 'ollama' and self.config.FALLBACK_TO_LOCAL:
+                logger.info("Falling back to Ollama")
+                self.current_model = 'ollama'
+                return await self.generate_response(prompt, task_type)
+            raise
+            
+    async def analyze_data(self, data, analysis_type):
+        """Analyze data using local Ollama models for privacy"""
+        if not self.config.ENABLE_PRIVATE_DATA_ANALYSIS:
+            raise ValueError("Private data analysis is disabled")
+            
+        model = self.config.MODELS['ollama']['data_analysis']
+        prompt = f"Analyze the following data for {analysis_type}:\n{data}"
+        
+        try:
+            response = ollama.chat(model=model, messages=[{'role': 'user', 'content': prompt}])
+            return response['message']['content']
+        except Exception as e:
+            logger.error(f"Error analyzing data: {str(e)}")
+            raise 

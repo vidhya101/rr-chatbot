@@ -26,7 +26,6 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ThumbUpIcon from '@mui/icons-material/ThumbUp';
 import ThumbDownIcon from '@mui/icons-material/ThumbDown';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
-import SettingsIcon from '@mui/icons-material/Settings';
 import TuneIcon from '@mui/icons-material/Tune';
 import CloseIcon from '@mui/icons-material/Close';
 
@@ -39,19 +38,6 @@ import { vscDarkPlus, prism } from 'react-syntax-highlighter/dist/esm/styles/pri
 import { sendMessage, stopGeneration, listModels } from '../services/apiService';
 import { saveChat } from '../services/userService';
 
-// Debounce function for performance
-const debounce = (func, wait) => {
-  let timeout;
-  return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout);
-      func(...args);
-    };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-};
-
 const ChatInterface = ({ activeModel, darkMode, onModelChange }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -60,7 +46,6 @@ const ChatInterface = ({ activeModel, darkMode, onModelChange }) => {
   const [error, setError] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
-  const [selectedFile, setSelectedFile] = useState(null);
   const [typingIndicator, setTypingIndicator] = useState(false);
   const [suggestedQuestions, setSuggestedQuestions] = useState([
     "What can you help me with today?",
@@ -110,7 +95,7 @@ const ChatInterface = ({ activeModel, darkMode, onModelChange }) => {
       
       return () => clearTimeout(timer);
     }
-  }, []);
+  }, [messages.length]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -444,12 +429,12 @@ const ChatInterface = ({ activeModel, darkMode, onModelChange }) => {
   };
 
   // Handle model settings change
-  const handleSettingChange = useCallback(debounce((setting, value) => {
+  const handleSettingChange = useCallback((setting, value) => {
     setModelSettings(prev => ({
       ...prev,
       [setting]: value
     }));
-  }, 300), []);
+  }, []);
 
   // Custom renderer for code blocks in markdown
   const CodeBlock = ({ node, inline, className, children, ...props }) => {

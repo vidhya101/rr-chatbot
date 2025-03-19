@@ -26,7 +26,7 @@ import { styled } from '@mui/material/styles';
 import DownloadIcon from '@mui/icons-material/Download';
 import FullscreenIcon from '@mui/icons-material/Fullscreen';
 import CloseIcon from '@mui/icons-material/Close';
-import { apiService } from '../services/apiService';
+import apiService from '../services/apiService';
 
 // Styled components
 const VisualizationContainer = styled(Box)(({ theme }) => ({
@@ -93,18 +93,16 @@ const Visualization = ({ fileData, onClose }) => {
     setError(null);
     
     try {
-      const response = await apiService.post('/api/visualization/dashboard', {
-        file_path: filePath
-      });
+      const response = await apiService.generateDashboard(filePath);
       
-      if (response.data && response.data.success) {
-        setVisualizations(response.data.visualizations || []);
-        setStats(response.data.stats || null);
+      if (response && response.success) {
+        setVisualizations(response.visualizations || []);
+        setStats(response.stats || null);
       } else {
-        setError(response.data?.error || 'Failed to generate visualizations');
+        setError(response?.error || 'Failed to generate visualizations');
         setSnackbar({
           open: true,
-          message: response.data?.error || 'Failed to generate visualizations',
+          message: response?.error || 'Failed to generate visualizations',
           severity: 'error'
         });
       }
@@ -128,15 +126,11 @@ const Visualization = ({ fileData, onClose }) => {
     setError(null);
     
     try {
-      const response = await apiService.post('/api/visualization/visualize', {
-        file_path: fileData.path,
-        type: type,
-        params: params
-      });
+      const response = await apiService.generateCustomVisualization(fileData.path, type, params);
       
-      if (response.data && response.data.success) {
+      if (response && response.success) {
         // Add the new visualization to the list
-        const newViz = response.data.visualization;
+        const newViz = response.visualization;
         setVisualizations(prev => [...prev, newViz]);
         
         setSnackbar({
@@ -145,10 +139,10 @@ const Visualization = ({ fileData, onClose }) => {
           severity: 'success'
         });
       } else {
-        setError(response.data?.error || 'Failed to generate visualization');
+        setError(response?.error || 'Failed to generate visualization');
         setSnackbar({
           open: true,
-          message: response.data?.error || 'Failed to generate visualization',
+          message: response?.error || 'Failed to generate visualization',
           severity: 'error'
         });
       }

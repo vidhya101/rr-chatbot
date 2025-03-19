@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React from 'react';
+import { Link } from 'react-router-dom';
 import './Header.css';
 
 // Material UI components
@@ -23,11 +23,9 @@ import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import SettingsIcon from '@mui/icons-material/Settings';
-import HelpIcon from '@mui/icons-material/Help';
 import LogoutIcon from '@mui/icons-material/Logout';
 import PersonIcon from '@mui/icons-material/Person';
 import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount';
-import BarChartIcon from '@mui/icons-material/BarChart';
 import AnalyticsIcon from '@mui/icons-material/Analytics';
 
 const Header = ({ 
@@ -39,7 +37,6 @@ const Header = ({
   activeModel
 }) => {
   const [anchorEl, setAnchorEl] = React.useState(null);
-  const open = Boolean(anchorEl);
 
   const handleMenu = (event) => {
     setAnchorEl(event.currentTarget);
@@ -139,7 +136,7 @@ const Header = ({
                 vertical: 'top',
                 horizontal: 'right',
               }}
-              open={open}
+              open={Boolean(anchorEl)}
               onClose={handleClose}
               className="user-menu"
             >

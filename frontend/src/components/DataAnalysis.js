@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState } from 'react';
 import axios from 'axios';
 import Plot from 'react-plotly.js';
 import './DataAnalysis.css';
@@ -11,18 +10,11 @@ import {
   Paper,
   Typography,
   Button,
-  TextField,
   Alert,
   CircularProgress,
   Tabs,
   Tab,
   Box,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   FormControl,
   InputLabel,
   Select,
@@ -30,7 +22,13 @@ import {
   Card,
   CardHeader,
   CardContent,
-  Divider
+  Divider,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow
 } from '@mui/material';
 
 // Material UI icons
@@ -60,7 +58,7 @@ function TabPanel(props) {
   );
 }
 
-const DataAnalysis = ({ darkMode }) => {
+const DataAnalysis = () => {
   const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState('');
   const [filePath, setFilePath] = useState('');
@@ -75,8 +73,6 @@ const DataAnalysis = ({ darkMode }) => {
   const [dashboardData, setDashboardData] = useState(null);
   const [activeTab, setActiveTab] = useState(0);
   const [visualizations, setVisualizations] = useState({});
-  
-  const navigate = useNavigate();
   
   // Handle file selection
   const handleFileChange = (e) => {

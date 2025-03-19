@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import './Login.css';
+import { useAuth } from '../contexts/AuthContext';
+import { login } from '../services/authService';
 
 // Material UI components
 import {
@@ -12,7 +14,9 @@ import {
   IconButton,
   InputAdornment,
   Alert,
-  CircularProgress
+  CircularProgress,
+  Container,
+  Box
 } from '@mui/material';
 
 // Material UI Icons
@@ -23,192 +27,178 @@ import GitHubIcon from '@mui/icons-material/GitHub';
 import TwitterIcon from '@mui/icons-material/Twitter';
 
 // Services
-import { login, loginWithProvider } from '../services/authService';
+import { loginWithProvider } from '../services/authService';
 
-const Login = ({ darkMode, onLoginSuccess }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  
+const Login = () => {
   const navigate = useNavigate();
+  const { login: authLogin } = useAuth();
+  const [formData, setFormData] = useState({
+    email: '',
+    password: ''
+  });
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [validationErrors, setValidationErrors] = useState({});
 
-  // Handle form submission
+  const validateForm = () => {
+    const errors = {};
+    if (!formData.email) {
+      errors.email = 'Email is required';
+    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+      errors.email = 'Please enter a valid email address';
+    }
+    if (!formData.password) {
+      errors.password = 'Password is required';
+    } else if (formData.password.length < 6) {
+      errors.password = 'Password must be at least 6 characters long';
+    }
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+    // Clear validation error when user starts typing
+    if (validationErrors[name]) {
+      setValidationErrors(prev => ({
+        ...prev,
+        [name]: ''
+      }));
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
     
-    if (!email || !password) {
-      setError('Please enter both email and password.');
+    if (!validateForm()) {
       return;
     }
-    
+
     setLoading(true);
-    setError(null);
-    
+
     try {
-      const userData = await login(email, password);
-      
-      // Call the onLoginSuccess callback with user data
-      onLoginSuccess(userData);
-      
-      // Redirect to home page
-      navigate('/');
+      const response = await login(formData.email, formData.password);
+      if (response && response.user) {
+        authLogin(response.user);
+        navigate('/');
+      } else {
+        throw new Error('Invalid response from server');
+      }
     } catch (err) {
-      console.error('Login error:', err);
-      setError(err.message || 'Failed to login. Please check your credentials and try again.');
+      setError(err.message || 'Failed to login. Please try again.');
+      // Clear sensitive data on error
+      setFormData(prev => ({
+        ...prev,
+        password: ''
+      }));
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle social login
-  const handleSocialLogin = async (provider) => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const userData = await loginWithProvider(provider);
-      
-      // Call the onLoginSuccess callback with user data
-      onLoginSuccess(userData);
-      
-      // Redirect to home page
-      navigate('/');
-    } catch (err) {
-      console.error(`${provider} login error:`, err);
-      setError(`Failed to login with ${provider}. Please try again.`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Toggle password visibility
   const togglePasswordVisibility = () => {
     setShowPassword(!showPassword);
   };
 
   return (
-    <div className={`login-container ${darkMode ? 'dark-mode' : ''}`}>
-      <Paper elevation={3} className="login-paper">
-        <Typography variant="h4" className="login-title">
-          Welcome Back
-        </Typography>
-        
-        <Typography variant="body2" color="textSecondary" className="login-subtitle">
-          Sign in to continue to AI Chatbot
-        </Typography>
-        
-        {error && (
-          <Alert severity="error" className="login-alert">
-            {error}
-          </Alert>
-        )}
-        
-        <form onSubmit={handleSubmit} className="login-form">
-          <TextField
-            label="Email"
-            type="email"
-            fullWidth
-            variant="outlined"
-            margin="normal"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            disabled={loading}
-            required
-          />
-          
-          <TextField
-            label="Password"
-            type={showPassword ? 'text' : 'password'}
-            fullWidth
-            variant="outlined"
-            margin="normal"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            disabled={loading}
-            required
-            InputProps={{
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton
-                    onClick={togglePasswordVisibility}
-                    edge="end"
-                  >
-                    {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                  </IconButton>
-                </InputAdornment>
-              )
-            }}
-          />
-          
-          <div className="login-options">
-            <Link to="/forgot-password" className="forgot-password-link">
-              Forgot Password?
-            </Link>
-          </div>
-          
-          <Button
-            type="submit"
-            fullWidth
-            variant="contained"
-            color="primary"
-            size="large"
-            className="login-button"
-            disabled={loading}
-          >
-            {loading ? <CircularProgress size={24} /> : 'Sign In'}
-          </Button>
-        </form>
-        
-        <Divider className="login-divider">
-          <Typography variant="body2" color="textSecondary">
-            OR
+    <Container maxWidth="sm">
+      <Box
+        sx={{
+          marginTop: 8,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center'
+        }}
+      >
+        <Paper
+          elevation={3}
+          sx={{
+            padding: 4,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            width: '100%'
+          }}
+        >
+          <Typography component="h1" variant="h5" gutterBottom>
+            Sign In
           </Typography>
-        </Divider>
-        
-        <div className="social-login">
-          <Button
-            variant="outlined"
-            startIcon={<GoogleIcon />}
-            onClick={() => handleSocialLogin('google')}
-            disabled={loading}
-            className="social-button google"
-          >
-            Google
-          </Button>
-          
-          <Button
-            variant="outlined"
-            startIcon={<GitHubIcon />}
-            onClick={() => handleSocialLogin('github')}
-            disabled={loading}
-            className="social-button github"
-          >
-            GitHub
-          </Button>
-          
-          <Button
-            variant="outlined"
-            startIcon={<TwitterIcon />}
-            onClick={() => handleSocialLogin('twitter')}
-            disabled={loading}
-            className="social-button twitter"
-          >
-            Twitter
-          </Button>
-        </div>
-        
-        <div className="register-prompt">
-          <Typography variant="body2">
-            Don't have an account?{' '}
-            <Link to="/register" className="register-link">
-              Sign Up
-            </Link>
-          </Typography>
-        </div>
-      </Paper>
-    </div>
+
+          {error && (
+            <Alert severity="error" sx={{ width: '100%', mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+
+          <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%' }}>
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              id="email"
+              label="Email Address"
+              name="email"
+              autoComplete="email"
+              autoFocus
+              value={formData.email}
+              onChange={handleChange}
+              error={!!validationErrors.email}
+              helperText={validationErrors.email}
+              disabled={loading}
+            />
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              name="password"
+              label="Password"
+              type={showPassword ? 'text' : 'password'}
+              id="password"
+              autoComplete="current-password"
+              value={formData.password}
+              onChange={handleChange}
+              error={!!validationErrors.password}
+              helperText={validationErrors.password}
+              disabled={loading}
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      onClick={togglePasswordVisibility}
+                      edge="end"
+                    >
+                      {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                    </IconButton>
+                  </InputAdornment>
+                )
+              }}
+            />
+            <Button
+              type="submit"
+              fullWidth
+              variant="contained"
+              sx={{ mt: 3, mb: 2 }}
+              disabled={loading}
+            >
+              {loading ? <CircularProgress size={24} /> : 'Sign In'}
+            </Button>
+            <Box sx={{ textAlign: 'center' }}>
+              <Link to="/register" style={{ textDecoration: 'none' }}>
+                <Typography variant="body2" color="primary">
+                  Don't have an account? Sign Up
+                </Typography>
+              </Link>
+            </Box>
+          </Box>
+        </Paper>
+      </Box>
+    </Container>
   );
 };
 
