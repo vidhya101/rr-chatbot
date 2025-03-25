@@ -8,10 +8,225 @@ import openpyxl
 from models.db import db
 from models.file import File
 from services.ai_service import summarize_text
+from typing import Dict, Any, Optional
+from datetime import datetime
+from pathlib import Path
+from utils.validation import validate_file_path, validate_file_extension
+from utils.retry import retry, RetryContext
+from utils.decorators import circuit_breaker, CircuitBreaker
+from utils.exceptions import (
+    FileProcessingError, ValidationError, ResourceCleanupError,
+    ExternalServiceError
+)
+import magic
+import mimetypes
+from werkzeug.utils import secure_filename
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Try to use python-magic-bin, fallback to mimetypes
+try:
+    def get_mime_type(file_path):
+        return magic.from_file(file_path, mime=True)
+except (ImportError, OSError):
+    def get_mime_type(file_path):
+        return mimetypes.guess_type(file_path)[0] or 'application/octet-stream'
+
+class FileService:
+    """Service for handling file operations"""
+    
+    def __init__(self, upload_folder: str = 'uploads'):
+        self.upload_folder = upload_folder
+        self.supported_formats = {
+            'csv': self._load_csv,
+            'xlsx': self._load_excel,
+            'json': self._load_json,
+            'txt': self._load_text
+        }
+        self.circuit_breaker = CircuitBreaker(
+            failure_threshold=3,
+            reset_timeout=30.0
+        )
+    
+    @retry(max_attempts=3, delay=1.0, backoff=2.0)
+    def process_file(self, file_id: str, file_path: str, file_extension: str) -> None:
+        """Process file based on its type"""
+        file = None
+        try:
+            # Validate file path
+            validate_file_path(file_path)
+            validate_file_extension(file_path, list(self.supported_formats.keys()))
+            
+            # Get file from database
+            file = self._get_file_from_db(file_id)
+            if not file:
+                raise FileProcessingError(f"File not found: {file_id}")
+            
+            # Update processing status
+            file.processing_status = 'processing'
+            self._commit_db_changes()
+            
+            # Process based on file type
+            if file_extension in ['pdf', 'doc', 'docx', 'txt', 'md']:
+                self._process_text_document(file, file_path)
+            
+            elif file_extension in ['csv', 'xls', 'xlsx']:
+                self._process_tabular_data(file, file_path)
+            
+            elif file_extension in ['json', 'xml']:
+                self._process_structured_data(file, file_path)
+            
+            elif file_extension in ['jpg', 'jpeg', 'png', 'gif']:
+                self._process_image(file, file_path)
+            
+            # Update processing status
+            file.is_processed = True
+            file.processing_status = 'completed'
+            self._commit_db_changes()
+        
+        except ValidationError as e:
+            logger.error(f"Validation error processing file: {str(e)}")
+            self._update_file_status(file, 'failed', str(e))
+            raise
+        except ExternalServiceError as e:
+            logger.error(f"External service error processing file: {str(e)}")
+            self._update_file_status(file, 'failed', str(e))
+            raise
+        except Exception as e:
+            logger.error(f"Error processing file: {str(e)}")
+            self._update_file_status(file, 'failed', str(e))
+            raise FileProcessingError(f"Failed to process file: {str(e)}")
+        finally:
+            self._cleanup_resources()
+    
+    @retry(max_attempts=3, delay=1.0, backoff=2.0)
+    @circuit_breaker
+    def extract_metadata(self, file_path: str) -> Dict[str, Any]:
+        """Extract metadata from file"""
+        try:
+            # Validate file path
+            validate_file_path(file_path)
+            
+            file_extension = Path(file_path).suffix.lower().replace('.', '')
+            
+            if file_extension in ['txt', 'md']:
+                return self._extract_text_metadata(file_path)
+            elif file_extension == 'json':
+                return self._extract_json_metadata(file_path)
+            elif file_extension in ['jpg', 'jpeg', 'png', 'gif']:
+                return self._extract_image_metadata(file_path)
+            else:
+                raise ValidationError(f"Unsupported file type for metadata extraction: {file_extension}")
+        
+        except ValidationError as e:
+            logger.error(f"Validation error extracting metadata: {str(e)}")
+            raise
+        except Exception as e:
+            logger.error(f"Error extracting metadata: {str(e)}")
+            raise FileProcessingError(f"Failed to extract metadata: {str(e)}")
+    
+    def _extract_text_metadata(self, file_path: str) -> Dict[str, Any]:
+        """Extract metadata from text file"""
+        metadata = {}
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
+                lines = file.readlines()
+                
+                metadata['line_count'] = len(lines)
+                metadata['word_count'] = sum(len(line.split()) for line in lines)
+                
+                # Generate summary
+                text = ''.join(lines[:20])
+                metadata['summary'] = summarize_text(text, 100)
+        
+        except Exception as e:
+            logger.error(f"Error extracting text metadata: {str(e)}")
+            raise FileProcessingError(f"Failed to extract text metadata: {str(e)}")
+        
+        return metadata
+    
+    def _extract_json_metadata(self, file_path: str) -> Dict[str, Any]:
+        """Extract metadata from JSON file"""
+        metadata = {}
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
+                data = json.load(file)
+                
+                # Generate summary based on keys
+                if isinstance(data, dict):
+                    keys = list(data.keys())
+                    metadata['summary'] = f"JSON file with keys: {', '.join(keys[:5])}"
+                    if len(keys) > 5:
+                        metadata['summary'] += f" and {len(keys) - 5} more keys"
+                
+                elif isinstance(data, list):
+                    metadata['summary'] = f"JSON array with {len(data)} items"
+                    if data and isinstance(data[0], dict):
+                        keys = list(data[0].keys())
+                        metadata['summary'] += f", first item has keys: {', '.join(keys[:5])}"
+                        if len(keys) > 5:
+                            metadata['summary'] += f" and {len(keys) - 5} more keys"
+        
+        except Exception as e:
+            logger.error(f"Error extracting JSON metadata: {str(e)}")
+            raise FileProcessingError(f"Failed to extract JSON metadata: {str(e)}")
+        
+        return metadata
+    
+    def _extract_image_metadata(self, file_path: str) -> Dict[str, Any]:
+        """Extract metadata from image file"""
+        metadata = {
+            'has_images': True
+        }
+        
+        try:
+            from PIL import Image
+            
+            with Image.open(file_path) as img:
+                metadata['width'] = img.width
+                metadata['height'] = img.height
+                metadata['format'] = img.format
+                metadata['mode'] = img.mode
+                metadata['summary'] = f"{img.format} image, {img.width}x{img.height} pixels, {img.mode} mode"
+        
+        except Exception as e:
+            logger.error(f"Error extracting image metadata: {str(e)}")
+            raise FileProcessingError(f"Failed to extract image metadata: {str(e)}")
+        
+        return metadata
+    
+    def _update_file_status(self, file: Any, status: str, error: Optional[str] = None) -> None:
+        """Update file processing status"""
+        try:
+            if file:
+                file.processing_status = status
+                if error:
+                    file.processing_error = error
+                self._commit_db_changes()
+        except Exception as e:
+            logger.error(f"Error updating file status: {str(e)}")
+            raise FileProcessingError(f"Failed to update file status: {str(e)}")
+    
+    def _cleanup_resources(self) -> None:
+        """Clean up resources"""
+        try:
+            # Add any cleanup logic here
+            pass
+        except Exception as e:
+            logger.error(f"Error during cleanup: {str(e)}")
+            raise ResourceCleanupError(f"Failed to clean up resources: {str(e)}")
+    
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit with cleanup"""
+        self._cleanup_resources()
 
 def get_file_metadata(file_path, file_extension):
     """Extract metadata from file based on its type"""
@@ -225,47 +440,6 @@ def extract_image_metadata(file_path):
         logger.error(f"Error extracting image metadata: {str(e)}")
     
     return metadata
-
-
-def process_file(file_id, file_path, file_extension):
-    """Process file based on its type"""
-    try:
-        # Get file from database
-        file = File.query.get(file_id)
-        if not file:
-            logger.error(f"File not found: {file_id}")
-            return
-        
-        # Update processing status
-        file.processing_status = 'processing'
-        db.session.commit()
-        
-        # Process based on file type
-        if file_extension in ['pdf', 'doc', 'docx', 'txt', 'md']:
-            process_text_document(file, file_path)
-        
-        elif file_extension in ['csv', 'xls', 'xlsx']:
-            process_tabular_data(file, file_path)
-        
-        elif file_extension in ['json', 'xml']:
-            process_structured_data(file, file_path)
-        
-        elif file_extension in ['jpg', 'jpeg', 'png', 'gif']:
-            process_image(file, file_path)
-        
-        # Update processing status
-        file.is_processed = True
-        file.processing_status = 'completed'
-        db.session.commit()
-    
-    except Exception as e:
-        logger.error(f"Error processing file: {str(e)}")
-        
-        # Update processing status
-        if file:
-            file.processing_status = 'failed'
-            file.processing_error = str(e)
-            db.session.commit()
 
 
 def process_text_document(file, file_path):

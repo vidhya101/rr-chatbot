@@ -42,16 +42,16 @@ class DataAnalyzer:
         
     def load_data(self):
         """Load data from file path"""
-        if self.df is not None:
-            self.original_df = self.df.copy()
-            return self.df
-            
-        if self.file_path is None:
-            raise ValueError("No file path or DataFrame provided")
-            
-        file_extension = os.path.splitext(self.file_path)[1].lower()
-        
         try:
+            if self.df is not None:
+                self.original_df = self.df.copy()
+                return self.df
+            
+            if self.file_path is None:
+                raise ValueError("No file path or DataFrame provided")
+            
+            file_extension = os.path.splitext(self.file_path)[1].lower()
+            
             if file_extension == '.csv':
                 self.df = pd.read_csv(self.file_path)
             elif file_extension in ['.xls', '.xlsx']:
@@ -63,7 +63,7 @@ class DataAnalyzer:
                 self.df = pd.read_csv(self.file_path, sep=None, engine='python')
             else:
                 raise ValueError(f"Unsupported file format: {file_extension}")
-                
+            
             self.original_df = self.df.copy()
             return self.df
             

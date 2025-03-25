@@ -5,7 +5,7 @@ from models.chat import Chat, Message
 from models.user import User
 from models.log import Log
 from services.ai_service import generate_response, count_tokens
-from services.model_service import get_available_models, check_ollama_status
+from services.model_service import get_available_models
 from utils.ai_utils import generate_optimized_response, log_api_usage, rate_limiter
 import uuid
 from datetime import datetime
@@ -50,36 +50,18 @@ response_cache = {}
 
 @chat_bp.route('/models', methods=['GET'])
 def get_models():
-    """Get available AI models"""
+    """Get list of available models"""
     try:
-        # Check if Ollama is healthy
-        ollama_healthy, status_message = check_ollama_status()
-        
-        # Get models with force refresh if requested
-        force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
-        models = get_available_models(force_refresh=force_refresh)
-        
-        # Log the request
-        Log.log_info('api', 'Models requested', 
-                    details={'ollama_healthy': ollama_healthy, 'model_count': len(models)},
-                    ip_address=request.remote_addr,
-                    user_agent=request.headers.get('User-Agent'))
-        
+        models = get_available_models()
         return jsonify({
             "success": True,
-            "models": models,
-            "ollama_status": "online" if ollama_healthy else "offline",
-            "status_message": status_message
+            "models": models
         }), 200
     except Exception as e:
         logger.error(f"Error getting models: {str(e)}")
-        Log.log_error('api', f"Error getting models: {str(e)}", 
-                     ip_address=request.remote_addr,
-                     user_agent=request.headers.get('User-Agent'))
         return jsonify({
             "success": False,
-            "error": "Failed to get models", 
-            "details": str(e)
+            "error": "Failed to get models"
         }), 500
 
 @chat_bp.route('/chat', methods=['POST'])

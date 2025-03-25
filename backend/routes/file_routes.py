@@ -100,6 +100,23 @@ def analyze_file():
         
         if not os.path.exists(file_path):
             return jsonify({'error': 'File not found'}), 404
+            
+        # Check if target column is valid for the file
+        try:
+            # Read a small sample to check columns
+            file_extension = os.path.splitext(file_path)[1].lower()
+            if file_extension == '.csv':
+                df_sample = pd.read_csv(file_path, nrows=5)
+            elif file_extension in ['.xlsx', '.xls']:
+                df_sample = pd.read_excel(file_path, nrows=5)
+            else:
+                df_sample = pd.read_csv(file_path, sep=None, engine='python', nrows=5)
+                
+            if target_column and target_column not in df_sample.columns:
+                return jsonify({'error': f"Target column '{target_column}' not found in dataset"}), 400
+        except Exception as e:
+            logger.error(f"Error checking target column: {str(e)}")
+            return jsonify({'error': f"Error checking target column: {str(e)}"}), 500
         
         # Analyze the dataset
         analysis_results = analyze_dataset(file_path, target_column, model_type)
@@ -111,7 +128,7 @@ def analyze_file():
     
     except Exception as e:
         logger.error(f"Error analyzing file: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': f"Error analyzing file: {str(e)}"}), 500
 
 @file_bp.route('/preview', methods=['POST'])
 def preview_file():
@@ -188,16 +205,21 @@ def create_dashboard():
         analyzer.load_data()
         analyzer.explore_data()
         analyzer.clean_data()
-        analyzer.engineer_features(target_column=target_column)
+        
+        # Only engineer features if target column is provided
+        if target_column and target_column in analyzer.df.columns:
+            analyzer.engineer_features(target_column=target_column)
+            analyzer.train_model()
+        else:
+            analyzer.engineer_features()
+            
         analyzer.analyze_data()
         analyzer.create_visualizations()
-        
-        if target_column and target_column in analyzer.df.columns:
-            analyzer.train_model()
         
         # Generate dashboard data
         dashboard_data = analyzer.generate_dashboard_data()
         
+        # Return the dashboard data
         return jsonify({
             'message': 'Dashboard created successfully',
             'dashboard_data': dashboard_data
@@ -205,7 +227,7 @@ def create_dashboard():
     
     except Exception as e:
         logger.error(f"Error creating dashboard: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': f'Error creating dashboard: {str(e)}'}), 500
 
 @file_bp.route('/', methods=['GET'])
 @jwt_required(optional=True)

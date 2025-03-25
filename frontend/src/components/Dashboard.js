@@ -20,7 +20,19 @@ import {
   IconButton,
   Menu,
   MenuItem,
-  Box
+  Box,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  TextField,
+  Select,
+  FormControl,
+  InputLabel
 } from '@mui/material';
 
 // Material UI Icons
@@ -33,6 +45,11 @@ import AddIcon from '@mui/icons-material/Add';
 import ShareIcon from '@mui/icons-material/Share';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
+import UploadIcon from '@mui/icons-material/Upload';
+import HistoryIcon from '@mui/icons-material/History';
+import ModelTrainingIcon from '@mui/icons-material/ModelTraining';
+import DatasetIcon from '@mui/icons-material/Dataset';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 
 // Services
 import { getDashboards, deleteDashboard } from '../services/dashboardService';
@@ -83,6 +100,15 @@ const Dashboard = ({ darkMode }) => {
   const [error, setError] = useState(null);
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedDashboard, setSelectedDashboard] = useState(null);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [modelingDialogOpen, setModelingDialogOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState('');
+  const [modelParameters, setModelParameters] = useState({});
+  const [visualizationDialogOpen, setVisualizationDialogOpen] = useState(false);
+  const [selectedVisualization, setSelectedVisualization] = useState('');
+  const [visualizationParameters, setVisualizationParameters] = useState({});
 
   // Fetch dashboards on component mount and when activeTab changes
   useEffect(() => {
@@ -91,26 +117,172 @@ const Dashboard = ({ darkMode }) => {
       setError(null);
       
       try {
-        // In a real app, we would fetch from the API based on the activeTab
-        // For now, we'll use mock data
-        const response = await getDashboards(activeTab);
-        setDashboards(response || mockChartData);
+        // Fetch uploaded files
+        const filesResponse = await fetch('/api/data/files');
+        const filesData = await filesResponse.json();
+        setUploadedFiles(filesData.files || []);
+        
+        setDashboards(mockChartData);
       } catch (err) {
-        console.error('Error fetching dashboards:', err);
-        setError('Failed to load dashboards. Please try again.');
-        setDashboards([]);
+        console.error('Error fetching data:', err);
+        setError('Failed to load data. Please try again.');
       } finally {
         setLoading(false);
       }
     };
     
     fetchDashboards();
-    
-    // Update URL when tab changes
-    if (category !== activeTab) {
-      navigate(`/dashboard/${activeTab}`);
+  }, [activeTab]);
+
+  // Handle file upload
+  const handleFileUpload = async () => {
+    if (!selectedFile) return;
+
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    try {
+      const response = await fetch('/api/data/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) throw new Error('Upload failed');
+
+      const data = await response.json();
+      setUploadedFiles([...uploadedFiles, data]);
+      setUploadDialogOpen(false);
+      setSelectedFile(null);
+    } catch (err) {
+      console.error('Error uploading file:', err);
+      setError('Failed to upload file. Please try again.');
     }
-  }, [activeTab, category, navigate]);
+  };
+
+  // Handle model training
+  const handleModelTraining = async () => {
+    if (!selectedModel) return;
+
+    try {
+      const response = await fetch('/api/data/train', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: selectedModel,
+          parameters: modelParameters
+        })
+      });
+
+      if (!response.ok) throw new Error('Training failed');
+
+      setModelingDialogOpen(false);
+    } catch (err) {
+      console.error('Error training model:', err);
+      setError('Failed to train model. Please try again.');
+    }
+  };
+
+  // Handle visualization creation
+  const handleVisualizationCreate = async () => {
+    if (!selectedVisualization) return;
+
+    try {
+      const response = await fetch('/api/data/visualize', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          type: selectedVisualization,
+          parameters: visualizationParameters
+        })
+      });
+
+      if (!response.ok) throw new Error('Visualization creation failed');
+
+      setVisualizationDialogOpen(false);
+    } catch (err) {
+      console.error('Error creating visualization:', err);
+      setError('Failed to create visualization. Please try again.');
+    }
+  };
+
+  // Render upload dialog
+  const renderUploadDialog = () => (
+    <Dialog open={uploadDialogOpen} onClose={() => setUploadDialogOpen(false)}>
+      <DialogTitle>Upload Data File</DialogTitle>
+      <DialogContent>
+        <input
+          type="file"
+          accept=".csv,.xlsx"
+          onChange={(e) => setSelectedFile(e.target.files[0])}
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setUploadDialogOpen(false)}>Cancel</Button>
+        <Button onClick={handleFileUpload} disabled={!selectedFile}>
+          Upload
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+
+  // Render modeling dialog
+  const renderModelingDialog = () => (
+    <Dialog open={modelingDialogOpen} onClose={() => setModelingDialogOpen(false)}>
+      <DialogTitle>Train Model</DialogTitle>
+      <DialogContent>
+        <FormControl fullWidth margin="normal">
+          <InputLabel>Model Type</InputLabel>
+          <Select
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+          >
+            <MenuItem value="regression">Regression</MenuItem>
+            <MenuItem value="classification">Classification</MenuItem>
+            <MenuItem value="clustering">Clustering</MenuItem>
+          </Select>
+        </FormControl>
+        {/* Add model-specific parameters here */}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setModelingDialogOpen(false)}>Cancel</Button>
+        <Button onClick={handleModelTraining} disabled={!selectedModel}>
+          Train
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+
+  // Render visualization dialog
+  const renderVisualizationDialog = () => (
+    <Dialog open={visualizationDialogOpen} onClose={() => setVisualizationDialogOpen(false)}>
+      <DialogTitle>Create Visualization</DialogTitle>
+      <DialogContent>
+        <FormControl fullWidth margin="normal">
+          <InputLabel>Visualization Type</InputLabel>
+          <Select
+            value={selectedVisualization}
+            onChange={(e) => setSelectedVisualization(e.target.value)}
+          >
+            <MenuItem value="line">Line Chart</MenuItem>
+            <MenuItem value="bar">Bar Chart</MenuItem>
+            <MenuItem value="scatter">Scatter Plot</MenuItem>
+            <MenuItem value="pie">Pie Chart</MenuItem>
+          </Select>
+        </FormControl>
+        {/* Add visualization-specific parameters here */}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setVisualizationDialogOpen(false)}>Cancel</Button>
+        <Button onClick={handleVisualizationCreate} disabled={!selectedVisualization}>
+          Create
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
 
   // Handle tab change
   const handleTabChange = (event, newValue) => {
@@ -194,130 +366,105 @@ const Dashboard = ({ darkMode }) => {
     }
   };
 
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Alert severity="error" sx={{ mb: 2 }}>
+        {error}
+      </Alert>
+    );
+  }
+
   return (
-    <div className={`dashboard-container ${darkMode ? 'dark-mode' : ''}`}>
-      <Paper elevation={0} className="dashboard-header">
-        <Typography variant="h4" className="dashboard-title">
-          Dashboards
-        </Typography>
-        
+    <Box>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h5">Data Analytics Dashboard</Typography>
+        <Box>
         <Button
-          variant="contained"
-          color="primary"
-          startIcon={<AddIcon />}
-          onClick={() => navigate('/dashboard/create')}
-          className="create-dashboard-button"
-        >
-          Create Dashboard
-        </Button>
-      </Paper>
-      
-      <Tabs
-        value={activeTab}
-        onChange={handleTabChange}
-        indicatorColor="primary"
-        textColor="primary"
-        className="dashboard-tabs"
-      >
-        <Tab value="recent" label="Recent" />
-        <Tab value="saved" label="Saved" />
-        <Tab value="shared" label="Shared with Me" />
-        <Tab value="all" label="All Dashboards" />
-      </Tabs>
-      
-      {error && (
-        <Alert severity="error" className="dashboard-alert">
-          {error}
-        </Alert>
-      )}
-      
-      {loading ? (
-        <div className="dashboard-loading">
-          <CircularProgress />
-          <Typography variant="body1">Loading dashboards...</Typography>
-        </div>
-      ) : dashboards.length === 0 ? (
-        <div className="dashboard-empty">
-          <Typography variant="h6">No dashboards found</Typography>
-          <Typography variant="body1">
-            Create a new dashboard to visualize your data.
-          </Typography>
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<AddIcon />}
-            onClick={() => navigate('/dashboard/create')}
-            className="create-dashboard-button-empty"
+            startIcon={<UploadIcon />}
+            onClick={() => setUploadDialogOpen(true)}
+            sx={{ mr: 1 }}
           >
-            Create Dashboard
+            Upload Data
+        </Button>
+          <Button
+            startIcon={<ModelTrainingIcon />}
+            onClick={() => setModelingDialogOpen(true)}
+            sx={{ mr: 1 }}
+          >
+            Train Model
           </Button>
-        </div>
-      ) : (
-        <Grid container spacing={3} className="dashboard-grid">
-          {dashboards.map((dashboard) => (
-            <Grid item xs={12} sm={6} md={4} key={dashboard.id}>
-              <Card className="dashboard-card">
-                <CardContent className="dashboard-card-content">
-                  <div className="dashboard-card-header">
-                    <div className="dashboard-card-icon">
-                      {dashboard.icon || getChartIcon(dashboard.type)}
-                    </div>
-                    <Typography variant="h6" className="dashboard-card-title">
-                      {dashboard.title}
+          <Button
+            startIcon={<BarChartIcon />}
+            onClick={() => setVisualizationDialogOpen(true)}
+          >
+            Create Visualization
+          </Button>
+        </Box>
+      </Box>
+
+      <Grid container spacing={3}>
+        {/* Uploaded Files Section */}
+        <Grid item xs={12}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Uploaded Files
                     </Typography>
-                    <IconButton
-                      size="small"
-                      onClick={(e) => handleMenuOpen(e, dashboard)}
-                      className="dashboard-card-menu"
-                    >
-                      <MoreVertIcon />
-                    </IconButton>
-                  </div>
-                  
-                  <Typography variant="body2" color="textSecondary" className="dashboard-card-description">
-                    {dashboard.description}
-                  </Typography>
-                  
-                  <Box className="dashboard-card-chart-placeholder">
-                    {/* In a real app, this would be a chart component */}
-                    <div className="chart-placeholder">
-                      {dashboard.icon || getChartIcon(dashboard.type)}
-                    </div>
-                  </Box>
-                  
-                  <div className="dashboard-card-footer">
-                    <Chip
-                      label={dashboard.type}
-                      size="small"
-                      className={`dashboard-card-type ${dashboard.type}`}
+              <List>
+                {Object.entries(uploadedFiles).map(([filename, metadata]) => (
+                  <ListItem key={filename}>
+                    <ListItemIcon>
+                      <DatasetIcon />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={filename}
+                      secondary={`Uploaded: ${new Date(metadata.upload_time).toLocaleString()}`}
                     />
-                    <Typography variant="caption" color="textSecondary">
-                      Updated: {formatDate(dashboard.lastUpdated)}
+                    <IconButton onClick={() => {}}>
+                      <VisibilityIcon />
+                    </IconButton>
+                  </ListItem>
+                ))}
+              </List>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Recent Visualizations */}
+        <Grid item xs={12}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Recent Visualizations
+              </Typography>
+              <Grid container spacing={2}>
+                {dashboards.map((chart) => (
+                  <Grid item xs={12} md={6} key={chart.id}>
+                    <Card>
+                      <CardContent>
+                        <Box display="flex" alignItems="center" mb={1}>
+                          {chart.icon}
+                          <Typography variant="h6" ml={1}>
+                            {chart.title}
+                  </Typography>
+                  </Box>
+                        <Typography variant="body2" color="textSecondary">
+                          {chart.description}
                     </Typography>
-                  </div>
                 </CardContent>
-                
-                <Divider />
-                
-                <CardActions className="dashboard-card-actions">
-                  <Button
-                    size="small"
-                    startIcon={<EditIcon />}
-                    onClick={() => {
-                      setSelectedDashboard(dashboard);
-                      handleEditDashboard();
-                    }}
-                  >
+                      <CardActions>
+                        <Button size="small" startIcon={<EditIcon />}>
                     Edit
                   </Button>
-                  <Button
-                    size="small"
-                    startIcon={<ShareIcon />}
-                    onClick={() => {
-                      setSelectedDashboard(dashboard);
-                      handleShareDashboard();
-                    }}
-                  >
+                        <Button size="small" startIcon={<ShareIcon />}>
                     Share
                   </Button>
                 </CardActions>
@@ -325,27 +472,15 @@ const Dashboard = ({ darkMode }) => {
             </Grid>
           ))}
         </Grid>
-      )}
-      
-      <Menu
-        anchorEl={anchorEl}
-        open={Boolean(anchorEl)}
-        onClose={handleMenuClose}
-      >
-        <MenuItem onClick={handleEditDashboard}>
-          <EditIcon fontSize="small" className="menu-icon" />
-          Edit
-        </MenuItem>
-        <MenuItem onClick={handleShareDashboard}>
-          <ShareIcon fontSize="small" className="menu-icon" />
-          Share
-        </MenuItem>
-        <MenuItem onClick={handleDeleteDashboard}>
-          <DeleteIcon fontSize="small" className="menu-icon" />
-          Delete
-        </MenuItem>
-      </Menu>
-    </div>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {renderUploadDialog()}
+      {renderModelingDialog()}
+      {renderVisualizationDialog()}
+    </Box>
   );
 };
 

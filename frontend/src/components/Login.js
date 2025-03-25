@@ -1,17 +1,11 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import './Login.css';
-import { useAuth } from '../contexts/AuthContext';
-import { login } from '../services/authService';
-
-// Material UI components
 import {
   Paper,
   Typography,
   TextField,
   Button,
-  Divider,
-  IconButton,
   InputAdornment,
   Alert,
   CircularProgress,
@@ -19,91 +13,34 @@ import {
   Box
 } from '@mui/material';
 
-// Material UI Icons
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
-import GoogleIcon from '@mui/icons-material/Google';
-import GitHubIcon from '@mui/icons-material/GitHub';
-import TwitterIcon from '@mui/icons-material/Twitter';
-
 // Services
-import { loginWithProvider } from '../services/authService';
+import { login } from '../services/authService';
 
-const Login = () => {
-  const navigate = useNavigate();
-  const { login: authLogin } = useAuth();
-  const [formData, setFormData] = useState({
-    email: '',
-    password: ''
-  });
-  const [showPassword, setShowPassword] = useState(false);
+const Login = ({ onLoginSuccess }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [validationErrors, setValidationErrors] = useState({});
-
-  const validateForm = () => {
-    const errors = {};
-    if (!formData.email) {
-      errors.email = 'Email is required';
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      errors.email = 'Please enter a valid email address';
-    }
-    if (!formData.password) {
-      errors.password = 'Password is required';
-    } else if (formData.password.length < 6) {
-      errors.password = 'Password must be at least 6 characters long';
-    }
-    setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-    // Clear validation error when user starts typing
-    if (validationErrors[name]) {
-      setValidationErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }));
-    }
-  };
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    
-    if (!validateForm()) {
-      return;
-    }
-
     setLoading(true);
 
     try {
-      const response = await login(formData.email, formData.password);
-      if (response && response.user) {
-        authLogin(response.user);
-        navigate('/');
-      } else {
-        throw new Error('Invalid response from server');
-      }
+      const response = await login(email, password);
+      onLoginSuccess(response.user);
+      navigate('/');
     } catch (err) {
-      setError(err.message || 'Failed to login. Please try again.');
-      // Clear sensitive data on error
-      setFormData(prev => ({
-        ...prev,
-        password: ''
-      }));
+      setError(err.response?.data?.message || 'Failed to login');
     } finally {
       setLoading(false);
     }
   };
 
   const togglePasswordVisibility = () => {
-    setShowPassword(!showPassword);
+    // Implementation of togglePasswordVisibility function
   };
 
   return (
@@ -146,10 +83,8 @@ const Login = () => {
               name="email"
               autoComplete="email"
               autoFocus
-              value={formData.email}
-              onChange={handleChange}
-              error={!!validationErrors.email}
-              helperText={validationErrors.email}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               disabled={loading}
             />
             <TextField
@@ -158,13 +93,11 @@ const Login = () => {
               fullWidth
               name="password"
               label="Password"
-              type={showPassword ? 'text' : 'password'}
+              type="password"
               id="password"
               autoComplete="current-password"
-              value={formData.password}
-              onChange={handleChange}
-              error={!!validationErrors.password}
-              helperText={validationErrors.password}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               disabled={loading}
               InputProps={{
                 endAdornment: (
@@ -173,7 +106,7 @@ const Login = () => {
                       onClick={togglePasswordVisibility}
                       edge="end"
                     >
-                      {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                      {/* Icon implementation */}
                     </IconButton>
                   </InputAdornment>
                 )
