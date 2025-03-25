@@ -15,7 +15,7 @@ export const sendMessage = async (message, chatId = null, model = null) => {
       ...(model && { model })
     };
     
-    const response = await api.post('/api/chat', payload);
+    const response = await api.post('/public/chat', payload);
     return response.data;
   } catch (error) {
     console.error('Error sending message:', error);

@@ -3,7 +3,7 @@ import { getAccessToken, getRefreshToken, setAuth, clearAuth, isTokenExpired } f
 
 // Create axios instance
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000',
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
@@ -44,7 +44,7 @@ api.interceptors.response.use(
       if (refreshToken && !isTokenExpired(refreshToken)) {
         try {
           const response = await axios.post(
-            `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/auth/refresh`,
+            `${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/auth/refresh`,
             {},
             {
               headers: {

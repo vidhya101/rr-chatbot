@@ -16,8 +16,8 @@ from datetime import datetime
 import uuid
 from services.ml_service import MLService
 from pathlib import Path
-from ..services.data_processing_service import data_processing_service
-from ..services.cache_service import cache_service
+from services.data_processing_service import data_processing_service
+from services.cache_service import cache_service
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -328,36 +328,42 @@ async def create_visualization():
         return jsonify({'error': str(e)}), 500
 
 @visualization_bp.route('/api/visualizations/<viz_id>', methods=['GET'])
-async def get_visualization(viz_id):
-    """Get a specific visualization with caching"""
+async def get_visualization_by_id(viz_id):
+    """Get a specific visualization by ID"""
     try:
         # Try to get from cache
-        cached_viz = cache_service.get(f'visualization:{viz_id}')
+        cache_key = f'visualization_{viz_id}'
+        cached_viz = cache_service.get(cache_key)
         if cached_viz:
             return jsonify(cached_viz)
 
-        viz_path = os.path.join(VISUALIZATION_FOLDER, f"{viz_id}.html")
-        meta_path = os.path.join(VISUALIZATION_FOLDER, f"{viz_id}.json")
+        # If not in cache, get from storage
+        viz_path = Path(VISUALIZATION_FOLDER) / f'{viz_id}.html'
+        if not viz_path.exists():
+            return jsonify({
+                "success": False,
+                "error": "Visualization not found"
+            }), 404
 
-        if not os.path.exists(viz_path) or not os.path.exists(meta_path):
-            return jsonify({'error': 'Visualization not found'}), 404
-
-        with open(meta_path, 'r') as f:
-            metadata = json.load(f)
-
-        result = {
-            'id': viz_id,
-            'html_path': viz_path,
-            **metadata
-        }
+        # Read visualization data
+        with open(viz_path, 'r') as f:
+            viz_data = f.read()
 
         # Cache the result
-        cache_service.set(f'visualization:{viz_id}', result, expiration=3600)
-        return jsonify(result)
+        cache_service.set(cache_key, viz_data, expiration=3600)  # Cache for 1 hour
+
+        return jsonify({
+            "success": True,
+            "data": viz_data
+        })
 
     except Exception as e:
-        logger.error(f"Error getting visualization: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error retrieving visualization: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": "Failed to retrieve visualization",
+            "message": str(e)
+        }), 500
 
 @visualization_bp.route('/api/visualizations/<viz_id>', methods=['DELETE'])
 async def delete_visualization(viz_id):
