@@ -29,7 +29,8 @@ import {
   Tab,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
+  Snackbar
 } from '@mui/material';
 import {
   ModelTraining as ModelIcon,
@@ -56,20 +57,17 @@ const DataModeling = () => {
   const [modelResults, setModelResults] = useState(null);
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [activeTab, setActiveTab] = useState(0);
-  const [textInput, setTextInput] = useState('');
-  const [textAnalysisResults, setTextAnalysisResults] = useState(null);
-  const [timeSeriesConfig, setTimeSeriesConfig] = useState({
-    dateColumn: '',
-    valueColumn: '',
-    forecastPeriods: 30
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'info'
   });
-  const [timeSeriesResults, setTimeSeriesResults] = useState(null);
 
   const steps = [
     'Select Data',
-    'Choose Analysis Type',
+    'Choose Model',
     'Configure Parameters',
-    'Train/Analyze',
+    'Train Model',
     'View Results'
   ];
 
@@ -81,10 +79,22 @@ const DataModeling = () => {
     try {
       const response = await fetch('/api/data/files');
       const data = await response.json();
-      setUploadedFiles(data.files || []);
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch files');
+      }
+
+      if (data.success) {
+        setUploadedFiles(data.files || []);
+      }
     } catch (err) {
       console.error('Error fetching files:', err);
       setError('Failed to fetch available files');
+      setSnackbar({
+        open: true,
+        message: 'Failed to fetch available files',
+        severity: 'error'
+      });
     }
   };
 
@@ -106,6 +116,15 @@ const DataModeling = () => {
   };
 
   const handleTrainModel = async () => {
+    if (!selectedFile || !selectedModel) {
+      setSnackbar({
+        open: true,
+        message: 'Please select a file and model first',
+        severity: 'warning'
+      });
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -118,249 +137,134 @@ const DataModeling = () => {
         body: JSON.stringify({
           fileId: selectedFile.id,
           modelType: selectedModel,
-          parameters: modelParameters,
-          targetColumn: modelParameters.targetColumn
+          parameters: modelParameters
         })
       });
 
-      if (!response.ok) throw new Error('Training failed');
+      const data = await response.json();
 
-      const results = await response.json();
-      setModelResults(results);
-      setActiveStep(4);
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to train model');
+      }
+
+      if (data.success) {
+        setModelResults(data.model);
+        setActiveStep(4);
+        setSnackbar({
+          open: true,
+          message: 'Model trained successfully',
+          severity: 'success'
+        });
+      }
     } catch (err) {
       console.error('Error training model:', err);
-      setError('Failed to train model');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleTextAnalysis = async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch('/api/analysis/text', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          text: textInput,
-          type: 'all'
-        })
+      setError(err.message || 'Failed to train model');
+      setSnackbar({
+        open: true,
+        message: err.message || 'Failed to train model',
+        severity: 'error'
       });
-
-      if (!response.ok) throw new Error('Text analysis failed');
-
-      const results = await response.json();
-      setTextAnalysisResults(results);
-      setActiveStep(4);
-    } catch (err) {
-      console.error('Error analyzing text:', err);
-      setError('Failed to analyze text');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleTimeSeriesAnalysis = async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch('/api/analysis/time-series', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          fileId: selectedFile.id,
-          ...timeSeriesConfig
-        })
-      });
-
-      if (!response.ok) throw new Error('Time series analysis failed');
-
-      const results = await response.json();
-      setTimeSeriesResults(results);
-      setActiveStep(4);
-    } catch (err) {
-      console.error('Error analyzing time series:', err);
-      setError('Failed to analyze time series');
-    } finally {
-      setLoading(false);
-    }
+  const handleCloseSnackbar = () => {
+    setSnackbar(prev => ({ ...prev, open: false }));
   };
 
-  const renderDataSelection = () => (
+  const renderFileSelection = () => (
     <Card>
       <CardContent>
         <Typography variant="h6" gutterBottom>
           Select Data Source
         </Typography>
-        <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
-          <Tab label="File Data" />
-          <Tab label="Text Input" />
-        </Tabs>
-        {activeTab === 0 ? (
-          <List>
-            {uploadedFiles.map((file) => (
-              <ListItem
-                button
-                key={file.id}
-                onClick={() => handleFileSelect(file)}
-                selected={selectedFile?.id === file.id}
-              >
-                <ListItemIcon>
-                  <DatasetIcon />
-                </ListItemIcon>
-                <ListItemText
-                  primary={file.name}
-                  secondary={`Type: ${file.type}, Size: ${(file.size / 1024).toFixed(2)} KB`}
-                />
-              </ListItem>
-            ))}
-          </List>
-        ) : (
-          <Box mt={2}>
-            <TextField
-              fullWidth
-              multiline
-              rows={4}
-              label="Enter Text for Analysis"
-              value={textInput}
-              onChange={(e) => setTextInput(e.target.value)}
-            />
-          </Box>
-        )}
+        <List>
+          {uploadedFiles.map((file) => (
+            <ListItem
+              button
+              key={file.id}
+              onClick={() => handleFileSelect(file)}
+              selected={selectedFile?.id === file.id}
+            >
+              <ListItemIcon>
+                <DatasetIcon />
+              </ListItemIcon>
+              <ListItemText
+                primary={file.original_name}
+                secondary={`Type: ${file.type}, Rows: ${file.rows}, Columns: ${file.columns.length}`}
+              />
+            </ListItem>
+          ))}
+        </List>
       </CardContent>
     </Card>
   );
 
-  const renderAnalysisTypeSelection = () => (
+  const renderModelSelection = () => (
     <Card>
       <CardContent>
         <Typography variant="h6" gutterBottom>
-          Choose Analysis Type
+          Choose Model Type
         </Typography>
         <Grid container spacing={2}>
-          {activeTab === 0 ? (
-            <>
-              <Grid item xs={12} md={4}>
-                <Card
-                  variant="outlined"
-                  sx={{
-                    cursor: 'pointer',
-                    bgcolor: selectedModel === 'regression' ? 'primary.light' : 'background.paper'
-                  }}
-                  onClick={() => handleModelSelect('regression')}
-                >
-                  <CardContent>
-                    <Box display="flex" alignItems="center" mb={1}>
-                      <RegressionIcon color="primary" />
-                      <Typography variant="h6" ml={1}>
-                        Regression
-                      </Typography>
-                    </Box>
-                    <Typography variant="body2" color="textSecondary">
-                      Predict continuous values
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Card
-                  variant="outlined"
-                  sx={{
-                    cursor: 'pointer',
-                    bgcolor: selectedModel === 'classification' ? 'primary.light' : 'background.paper'
-                  }}
-                  onClick={() => handleModelSelect('classification')}
-                >
-                  <CardContent>
-                    <Box display="flex" alignItems="center" mb={1}>
-                      <ClassificationIcon color="primary" />
-                      <Typography variant="h6" ml={1}>
-                        Classification
-                      </Typography>
-                    </Box>
-                    <Typography variant="body2" color="textSecondary">
-                      Categorize data into classes
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Card
-                  variant="outlined"
-                  sx={{
-                    cursor: 'pointer',
-                    bgcolor: selectedModel === 'clustering' ? 'primary.light' : 'background.paper'
-                  }}
-                  onClick={() => handleModelSelect('clustering')}
-                >
-                  <CardContent>
-                    <Box display="flex" alignItems="center" mb={1}>
-                      <ClusterIcon color="primary" />
-                      <Typography variant="h6" ml={1}>
-                        Clustering
-                      </Typography>
-                    </Box>
-                    <Typography variant="body2" color="textSecondary">
-                      Group similar data points
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Card
-                  variant="outlined"
-                  sx={{
-                    cursor: 'pointer',
-                    bgcolor: selectedModel === 'time_series' ? 'primary.light' : 'background.paper'
-                  }}
-                  onClick={() => handleModelSelect('time_series')}
-                >
-                  <CardContent>
-                    <Box display="flex" alignItems="center" mb={1}>
-                      <TimelineIcon color="primary" />
-                      <Typography variant="h6" ml={1}>
-                        Time Series
-                      </Typography>
-                    </Box>
-                    <Typography variant="body2" color="textSecondary">
-                      Analyze and forecast time series data
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </>
-          ) : (
-            <Grid item xs={12} md={6}>
-              <Card
-                variant="outlined"
-                sx={{
-                  cursor: 'pointer',
-                  bgcolor: selectedModel === 'text_analysis' ? 'primary.light' : 'background.paper'
-                }}
-                onClick={() => handleModelSelect('text_analysis')}
-              >
-                <CardContent>
-                  <Box display="flex" alignItems="center" mb={1}>
-                    <TextIcon color="primary" />
-                    <Typography variant="h6" ml={1}>
-                      Text Analysis
-                    </Typography>
-                  </Box>
-                  <Typography variant="body2" color="textSecondary">
-                    Analyze text content using NLP
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-          )}
+          <Grid item xs={12} sm={6} md={4}>
+            <Card
+              onClick={() => handleModelSelect('regression')}
+              sx={{
+                cursor: 'pointer',
+                bgcolor: selectedModel === 'regression' ? 'primary.light' : 'background.paper'
+              }}
+            >
+              <CardContent>
+                <Box display="flex" alignItems="center" mb={1}>
+                  <RegressionIcon sx={{ mr: 1 }} />
+                  <Typography variant="h6">Regression</Typography>
+                </Box>
+                <Typography variant="body2" color="textSecondary">
+                  Predict continuous values
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={4}>
+            <Card
+              onClick={() => handleModelSelect('classification')}
+              sx={{
+                cursor: 'pointer',
+                bgcolor: selectedModel === 'classification' ? 'primary.light' : 'background.paper'
+              }}
+            >
+              <CardContent>
+                <Box display="flex" alignItems="center" mb={1}>
+                  <ClassificationIcon sx={{ mr: 1 }} />
+                  <Typography variant="h6">Classification</Typography>
+                </Box>
+                <Typography variant="body2" color="textSecondary">
+                  Predict categories or classes
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={4}>
+            <Card
+              onClick={() => handleModelSelect('clustering')}
+              sx={{
+                cursor: 'pointer',
+                bgcolor: selectedModel === 'clustering' ? 'primary.light' : 'background.paper'
+              }}
+            >
+              <CardContent>
+                <Box display="flex" alignItems="center" mb={1}>
+                  <ClusterIcon sx={{ mr: 1 }} />
+                  <Typography variant="h6">Clustering</Typography>
+                </Box>
+                <Typography variant="body2" color="textSecondary">
+                  Group similar data points
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
         </Grid>
       </CardContent>
     </Card>
@@ -370,96 +274,90 @@ const DataModeling = () => {
     <Card>
       <CardContent>
         <Typography variant="h6" gutterBottom>
-          Configure Parameters
+          Configure Model Parameters
         </Typography>
-        {selectedModel === 'time_series' ? (
+        {selectedModel === 'regression' && (
           <Grid container spacing={2}>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Date Column"
-                value={timeSeriesConfig.dateColumn}
-                onChange={(e) => setTimeSeriesConfig({
-                  ...timeSeriesConfig,
-                  dateColumn: e.target.value
-                })}
-              />
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <TextField
+                  label="Learning Rate"
+                  type="number"
+                  value={modelParameters.learning_rate || 0.01}
+                  onChange={(e) => handleParameterChange('learning_rate', e.target.value)}
+                  inputProps={{ step: 0.001, min: 0.001, max: 1 }}
+                />
+              </FormControl>
             </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Value Column"
-                value={timeSeriesConfig.valueColumn}
-                onChange={(e) => setTimeSeriesConfig({
-                  ...timeSeriesConfig,
-                  valueColumn: e.target.value
-                })}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                type="number"
-                label="Forecast Periods"
-                value={timeSeriesConfig.forecastPeriods}
-                onChange={(e) => setTimeSeriesConfig({
-                  ...timeSeriesConfig,
-                  forecastPeriods: parseInt(e.target.value)
-                })}
-              />
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <TextField
+                  label="Number of Epochs"
+                  type="number"
+                  value={modelParameters.epochs || 100}
+                  onChange={(e) => handleParameterChange('epochs', e.target.value)}
+                  inputProps={{ step: 1, min: 1 }}
+                />
+              </FormControl>
             </Grid>
           </Grid>
-        ) : (
+        )}
+        {selectedModel === 'classification' && (
           <Grid container spacing={2}>
-            {getModelParameters(selectedModel).map((param) => (
-              <Grid item xs={12} md={6} key={param.name}>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Algorithm</InputLabel>
+                <Select
+                  value={modelParameters.algorithm || 'random_forest'}
+                  onChange={(e) => handleParameterChange('algorithm', e.target.value)}
+                >
+                  <MenuItem value="random_forest">Random Forest</MenuItem>
+                  <MenuItem value="svm">Support Vector Machine</MenuItem>
+                  <MenuItem value="neural_network">Neural Network</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+        )}
+        {selectedModel === 'clustering' && (
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
                 <TextField
-                  fullWidth
-                  label={param.label}
-                  type={param.type}
-                  value={modelParameters[param.name] || param.default}
-                  onChange={(e) => handleParameterChange(param.name, e.target.value)}
-                  helperText={param.description}
+                  label="Number of Clusters"
+                  type="number"
+                  value={modelParameters.n_clusters || 3}
+                  onChange={(e) => handleParameterChange('n_clusters', e.target.value)}
+                  inputProps={{ step: 1, min: 2 }}
                 />
-              </Grid>
-            ))}
+              </FormControl>
+            </Grid>
           </Grid>
         )}
       </CardContent>
     </Card>
   );
 
-  const renderAnalysis = () => (
+  const renderModelTraining = () => (
     <Card>
       <CardContent>
         <Typography variant="h6" gutterBottom>
-          {selectedModel === 'text_analysis' ? 'Text Analysis' : 'Model Training'}
+          Train Model
         </Typography>
-        <Box display="flex" flexDirection="column" alignItems="center" mt={3}>
-          {loading ? (
-            <>
-              <CircularProgress />
-              <Typography variant="body1" mt={2}>
-                {selectedModel === 'text_analysis' ? 'Analyzing text...' : 'Training in progress...'}
-              </Typography>
-            </>
-          ) : (
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<StartIcon />}
-              onClick={() => {
-                if (selectedModel === 'text_analysis') {
-                  handleTextAnalysis();
-                } else if (selectedModel === 'time_series') {
-                  handleTimeSeriesAnalysis();
-                } else {
-                  handleTrainModel();
-                }
-              }}
-            >
-              {selectedModel === 'text_analysis' ? 'Start Analysis' : 'Start Training'}
-            </Button>
+        <Box display="flex" flexDirection="column" alignItems="center" p={3}>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleTrainModel}
+            disabled={loading}
+            startIcon={loading ? <CircularProgress size={20} /> : <StartIcon />}
+          >
+            {loading ? 'Training...' : 'Start Training'}
+          </Button>
+          {error && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {error}
+            </Alert>
           )}
         </Box>
       </CardContent>
@@ -470,63 +368,34 @@ const DataModeling = () => {
     <Card>
       <CardContent>
         <Typography variant="h6" gutterBottom>
-          Analysis Results
+          Model Results
         </Typography>
-        {selectedModel === 'text_analysis' && textAnalysisResults && (
-          <Box>
-            <Accordion>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography>Entities</Typography>
-              </AccordionSummary>
-              <AccordionDetails>
-                <List>
-                  {textAnalysisResults.entities.map((entity, index) => (
-                    <ListItem key={index}>
-                      <ListItemText primary={entity[0]} secondary={entity[1]} />
-                    </ListItem>
-                  ))}
-                </List>
-              </AccordionDetails>
-            </Accordion>
-            <Accordion>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography>Sentiment Analysis</Typography>
-              </AccordionSummary>
-              <AccordionDetails>
-                <Typography>
-                  Label: {textAnalysisResults.sentiment.label}
-                  <br />
-                  Score: {textAnalysisResults.sentiment.score.toFixed(4)}
-                </Typography>
-              </AccordionDetails>
-            </Accordion>
-          </Box>
-        )}
-        {selectedModel === 'time_series' && timeSeriesResults && (
-          <Box>
-            <Plot
-              data={JSON.parse(timeSeriesResults.plot).data}
-              layout={JSON.parse(timeSeriesResults.plot).layout}
-            />
-          </Box>
-        )}
         {modelResults && (
           <Grid container spacing={2}>
             <Grid item xs={12}>
               <Typography variant="subtitle1">
                 Model Performance Metrics
               </Typography>
-              <List>
-                {Object.entries(modelResults.metrics || {}).map(([metric, value]) => (
-                  <ListItem key={metric}>
-                    <ListItemText
-                      primary={metric}
-                      secondary={typeof value === 'number' ? value.toFixed(4) : value}
-                    />
-                  </ListItem>
-                ))}
-              </List>
+              {modelResults.metrics && Object.entries(modelResults.metrics).map(([metric, value]) => (
+                <Box key={metric} display="flex" alignItems="center" mt={1}>
+                  <Typography variant="body2" sx={{ minWidth: 120 }}>
+                    {metric}:
+                  </Typography>
+                  <Typography variant="body1" color="primary">
+                    {typeof value === 'number' ? value.toFixed(4) : value}
+                  </Typography>
+                </Box>
+              ))}
             </Grid>
+            {modelResults.plots && modelResults.plots.map((plot, index) => (
+              <Grid item xs={12} md={6} key={index}>
+                <Plot
+                  data={plot.data}
+                  layout={plot.layout}
+                  config={{ responsive: true }}
+                />
+              </Grid>
+            ))}
           </Grid>
         )}
       </CardContent>
@@ -536,106 +405,60 @@ const DataModeling = () => {
   return (
     <Box>
       <Typography variant="h5" gutterBottom>
-        Advanced Data Analysis
+        Data Modeling
       </Typography>
 
-      <Box mb={3}>
-        <Stepper activeStep={activeStep}>
-          {steps.map((label) => (
-            <Step key={label}>
-              <StepLabel>{label}</StepLabel>
-            </Step>
-          ))}
-        </Stepper>
-      </Box>
+      <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
+        {steps.map((label) => (
+          <Step key={label}>
+            <StepLabel>{label}</StepLabel>
+          </Step>
+        ))}
+      </Stepper>
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      <Box mt={3}>
-        {activeStep === 0 && renderDataSelection()}
-        {activeStep === 1 && renderAnalysisTypeSelection()}
+      <Box mb={4}>
+        {activeStep === 0 && renderFileSelection()}
+        {activeStep === 1 && renderModelSelection()}
         {activeStep === 2 && renderParameterConfiguration()}
-        {activeStep === 3 && renderAnalysis()}
+        {activeStep === 3 && renderModelTraining()}
         {activeStep === 4 && renderResults()}
       </Box>
+
+      <Box display="flex" justifyContent="space-between">
+        <Button
+          onClick={() => setActiveStep((prev) => prev - 1)}
+          disabled={activeStep === 0}
+        >
+          Back
+        </Button>
+        <Button
+          variant="contained"
+          onClick={() => setActiveStep((prev) => prev + 1)}
+          disabled={activeStep === steps.length - 1 || 
+                   (activeStep === 0 && !selectedFile) ||
+                   (activeStep === 1 && !selectedModel)}
+        >
+          Next
+        </Button>
+      </Box>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={handleCloseSnackbar} 
+          severity={snackbar.severity}
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
-};
-
-const getModelParameters = (model) => {
-  switch (model) {
-    case 'regression':
-      return [
-        {
-          name: 'targetColumn',
-          label: 'Target Column',
-          type: 'text',
-          default: '',
-          description: 'Column to predict'
-        },
-        {
-          name: 'learning_rate',
-          label: 'Learning Rate',
-          type: 'number',
-          default: 0.01,
-          description: 'Step size for gradient descent'
-        },
-        {
-          name: 'epochs',
-          label: 'Epochs',
-          type: 'number',
-          default: 100,
-          description: 'Number of training iterations'
-        }
-      ];
-    case 'classification':
-      return [
-        {
-          name: 'targetColumn',
-          label: 'Target Column',
-          type: 'text',
-          default: '',
-          description: 'Column to predict'
-        },
-        {
-          name: 'max_depth',
-          label: 'Max Depth',
-          type: 'number',
-          default: 5,
-          description: 'Maximum depth of the decision tree'
-        },
-        {
-          name: 'n_estimators',
-          label: 'Number of Estimators',
-          type: 'number',
-          default: 100,
-          description: 'Number of trees in the forest'
-        }
-      ];
-    case 'clustering':
-      return [
-        {
-          name: 'n_clusters',
-          label: 'Number of Clusters',
-          type: 'number',
-          default: 3,
-          description: 'Number of clusters to form'
-        },
-        {
-          name: 'max_iter',
-          label: 'Max Iterations',
-          type: 'number',
-          default: 300,
-          description: 'Maximum number of iterations'
-        }
-      ];
-    default:
-      return [];
-  }
 };
 
 export default DataModeling; 

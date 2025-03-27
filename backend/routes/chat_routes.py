@@ -585,112 +585,76 @@ def get_messages(chat_id):
         'per_page': per_page
     }), 200
 
-@chat_bp.route('/public/chat', methods=['POST'])
+@chat_bp.route('/public/chat', methods=['POST', 'OPTIONS'])
 def public_chat():
-    """Public chat endpoint that doesn't require authentication"""
+    """Process a public chat message without authentication"""
+    if request.method == 'OPTIONS':
+        return '', 204  # Handle preflight request
+        
     start_time = time.time()
     
     try:
+        # Get request data
         data = request.get_json()
         
         if not data:
-            return jsonify({"error": "No data provided"}), 400
+            return jsonify({"success": False, "error": "No data provided"}), 400
         
         message = data.get('message')
-        if not message:
-            return jsonify({"error": "No message provided"}), 400
+        model = data.get('model', 'mistral')  # Default to mistral if not specified
         
-        chat_history = data.get('chatHistory', [])
-        model = data.get('model', 'mistral')
+        if not message:
+            return jsonify({"success": False, "error": "No message provided"}), 400
         
         # Log the request
-        Log.log_info('public_chat', "Public chat request", 
-                    details={'model': model, 'message_length': len(message)},
-                    ip_address=request.remote_addr,
-                    user_agent=request.headers.get('User-Agent'))
+        logger.info(f"Public chat request received - Model: {model}")
         
-        # Create a system message that sets the tone for the AI
-        system_message = """You are a friendly, helpful, and engaging AI assistant. 
-        Your responses should be conversational, warm, and natural-sounding.
-        Use a variety of sentence structures and occasionally include emojis where appropriate.
-        Show enthusiasm and personality in your responses, and feel free to use light humor.
-        Be concise but thorough, and always focus on being helpful and informative.
-        If you're unsure about something, be honest about your limitations.
-        Remember to be empathetic and understanding of the user's needs."""
+        # Prepare messages for AI
+        messages_for_ai = [
+            {
+                "role": "system",
+                "content": "You are a helpful, friendly, and engaging assistant. Be conversational and use a variety of sentence structures. Show enthusiasm and personality in your responses. Be concise but thorough, and use emojis occasionally where appropriate. If you don't know something, be honest about it."
+            },
+            {
+                "role": "user",
+                "content": message
+            }
+        ]
         
-        # Format the chat history for the AI
-        formatted_history = []
-        if chat_history:
-            for chat in chat_history:
-                role = chat.get('role', '')
-                content = chat.get('message', '')
-                if role and content:
-                    formatted_history.append({"role": role, "content": content})
-        
-        # Add the system message at the beginning
-        if formatted_history and formatted_history[0].get('role') != 'system':
-            formatted_history.insert(0, {"role": "system", "content": system_message})
-        else:
-            formatted_history = [{"role": "system", "content": system_message}]
-        
-        # Add the current message
-        formatted_history.append({"role": "user", "content": message})
-        
-        # Check cache for quick response
-        cache_key = f"{model}:{hash(str(formatted_history))}"
-        if cache_key in response_cache:
-            response_text = response_cache[cache_key]
-            logger.info(f"Using cached response for {cache_key}")
-        else:
-            # Generate a response using the AI service with timeout
-            try:
-                # Submit task to thread pool with timeout
-                future = chat_executor.submit(generate_response, formatted_history, model)
-                response_text = future.result(timeout=30)  # 30 second timeout
-                
-                # Cache the response
-                response_cache[cache_key] = response_text
-                
-                # Limit cache size
-                if len(response_cache) > 1000:
-                    # Remove oldest entries
-                    keys_to_remove = list(response_cache.keys())[:100]
-                    for key in keys_to_remove:
-                        response_cache.pop(key, None)
-                
-            except concurrent.futures.TimeoutError:
-                logger.error(f"Timeout generating response for model {model}")
-                Log.log_error('public_chat', f"Timeout generating response", 
-                             details={'model': model},
-                             ip_address=request.remote_addr)
-                
-                # Provide a fallback response
-                response_text = "I'm sorry, but I'm taking longer than expected to process your request. Could you try again with a simpler question or a different model?"
-        
-        # Calculate response time
-        response_time = time.time() - start_time
-        
-        # Log the response
-        Log.log_info('public_chat', "Public chat response sent", 
-                    details={
-                        'model': model, 
-                        'response_length': len(response_text),
-                        'response_time': response_time
-                    },
-                    ip_address=request.remote_addr)
-        
-        return jsonify({
-            "message": response_text,
-            "responseTime": response_time
-        })
-    
+        try:
+            # Generate AI response with optimized handling and fallback
+            ai_response = generate_optimized_response(
+                messages_for_ai,
+                model,
+                timeout=30,
+                fallback_model='mistral'
+            )
+            
+            # Return successful response
+            return jsonify({
+                "success": True,
+                "response": ai_response,
+                "model": model,
+                "processing_time": time.time() - start_time
+            })
+            
+        except Exception as e:
+            logger.error(f"Error generating response: {str(e)}")
+            
+            # Provide a friendly error message
+            error_message = "I'm sorry, but I encountered an error processing your message. This might be due to high demand or a temporary issue. Could you try again in a moment?"
+            
+            return jsonify({
+                "success": False,
+                "error": error_message,
+                "details": str(e)
+            }), 500
+            
     except Exception as e:
-        logger.error(f"Error in public chat: {str(e)}")
-        Log.log_error('public_chat', f"Error in public chat: {str(e)}", 
-                     ip_address=request.remote_addr)
+        logger.error(f"Error in public chat endpoint: {str(e)}")
         return jsonify({
-            "error": "Something went wrong processing your request",
-            "message": "Sorry about that! I encountered an unexpected issue. Could you try again?"
+            "success": False,
+            "error": "An unexpected error occurred"
         }), 500
 
 @chat_bp.route('/simple-chat', methods=['POST'])

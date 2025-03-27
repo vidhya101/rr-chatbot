@@ -1,81 +1,45 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Typography, 
-  Paper, 
-  Grid, 
-  CircularProgress, 
-  Button, 
-  Card, 
-  CardMedia, 
-  CardContent, 
-  CardActions,
-  Snackbar,
+import {
+  Box,
+  Typography,
+  CircularProgress,
   Alert,
-  Tabs,
-  Tab,
-  Table,
-  TableContainer,
-  TableHead,
-  TableBody,
-  TableRow,
-  TableCell,
-  Chip
+  Grid,
+  Card,
+  CardContent,
+  CardActions,
+  Button,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Snackbar,
+  IconButton,
+  Divider,
+  Paper
 } from '@mui/material';
-import { styled } from '@mui/material/styles';
-import DownloadIcon from '@mui/icons-material/Download';
-import FullscreenIcon from '@mui/icons-material/Fullscreen';
-import CloseIcon from '@mui/icons-material/Close';
-import apiService from '../services/apiService';
-
-// Styled components
-const VisualizationContainer = styled(Box)(({ theme }) => ({
-  padding: theme.spacing(2),
-  marginTop: theme.spacing(2),
-  marginBottom: theme.spacing(2),
-  backgroundColor: theme.palette.mode === 'dark' ? '#1e1e1e' : '#f5f5f5',
-  borderRadius: theme.shape.borderRadius,
-  boxShadow: theme.shadows[3],
-}));
-
-const FullScreenModal = styled(Box)(({ theme }) => ({
-  position: 'fixed',
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  backgroundColor: 'rgba(0, 0, 0, 0.8)',
-  zIndex: 9999,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: theme.spacing(2),
-}));
-
-const FullScreenImage = styled('img')({
-  maxWidth: '90%',
-  maxHeight: '90%',
-  objectFit: 'contain',
-});
-
-const CloseButton = styled(Button)(({ theme }) => ({
-  position: 'absolute',
-  top: theme.spacing(2),
-  right: theme.spacing(2),
-  color: 'white',
-  backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  '&:hover': {
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-  },
-}));
+import {
+  BarChart as BarChartIcon,
+  Timeline as LineChartIcon,
+  PieChart as PieChartIcon,
+  ScatterPlot as ScatterPlotIcon,
+  Add as AddIcon,
+  Delete as DeleteIcon,
+  Edit as EditIcon,
+  Save as SaveIcon,
+  Fullscreen as FullscreenIcon
+} from '@mui/icons-material';
 
 const Visualization = ({ fileData, onClose }) => {
   const [visualizations, setVisualizations] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [fullScreenImage, setFullScreenImage] = useState(null);
-  const [stats, setStats] = useState(null);
-  const [tabValue, setTabValue] = useState(0);
+  const [selectedVisualization, setSelectedVisualization] = useState(null);
+  const [showFullScreen, setShowFullScreen] = useState(false);
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: '',
@@ -83,35 +47,58 @@ const Visualization = ({ fileData, onClose }) => {
   });
 
   useEffect(() => {
-    if (fileData && fileData.path) {
-      generateDashboard(fileData.path);
+    if (fileData?.id) {
+      generateVisualizations(fileData.id);
     }
   }, [fileData]);
 
-  const generateDashboard = async (filePath) => {
+  const generateVisualizations = async (fileId) => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await apiService.generateDashboard(filePath);
-      
-      if (response && response.success) {
-        setVisualizations(response.visualizations || []);
-        setStats(response.stats || null);
-      } else {
-        setError(response?.error || 'Failed to generate visualizations');
-        setSnackbar({
-          open: true,
-          message: response?.error || 'Failed to generate visualizations',
-          severity: 'error'
+      // Generate basic visualizations
+      const visualizationTypes = ['auto', 'scatter', 'line', 'bar', 'histogram'];
+      const newVisualizations = [];
+
+      for (const type of visualizationTypes) {
+        const response = await fetch('/api/data/visualize', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            fileId,
+            type,
+            columns: {
+              x: fileData.columns[0], // Use first column as x by default
+              y: fileData.columns[1]  // Use second column as y by default
+            }
+          })
         });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || `Failed to create ${type} visualization`);
+        }
+
+        if (data.success) {
+          newVisualizations.push({
+            ...data.visualization,
+            title: `${type.charAt(0).toUpperCase() + type.slice(1)} Chart`,
+            description: `${type} visualization of ${fileData.original_name}`
+          });
+        }
       }
+
+      setVisualizations(newVisualizations);
     } catch (err) {
-      console.error('Error generating dashboard:', err);
-      setError('Error generating visualizations. Please try again.');
+      console.error('Error generating visualizations:', err);
+      setError(err.message || 'Failed to generate visualizations');
       setSnackbar({
         open: true,
-        message: 'Error generating visualizations. Please try again.',
+        message: err.message || 'Failed to generate visualizations',
         severity: 'error'
       });
     } finally {
@@ -119,370 +106,112 @@ const Visualization = ({ fileData, onClose }) => {
     }
   };
 
-  const generateCustomVisualization = async (type, params = {}) => {
-    if (!fileData || !fileData.path) return;
-    
-    setLoading(true);
-    setError(null);
-    
+  const handleViewVisualization = (visualization) => {
+    window.open(`/api/data/visualization/${visualization.id}`, '_blank');
+  };
+
+  const handleDeleteVisualization = async (visualization) => {
     try {
-      const response = await apiService.generateCustomVisualization(fileData.path, type, params);
-      
-      if (response && response.success) {
-        // Add the new visualization to the list
-        const newViz = response.visualization;
-        setVisualizations(prev => [...prev, newViz]);
-        
+      const response = await fetch(`/api/data/visualization/${visualization.id}`, {
+        method: 'DELETE'
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete visualization');
+      }
+
+      if (data.success) {
+        setVisualizations(prevVisualizations => 
+          prevVisualizations.filter(v => v.id !== visualization.id)
+        );
         setSnackbar({
           open: true,
-          message: 'Visualization generated successfully',
+          message: 'Visualization deleted successfully',
           severity: 'success'
         });
-      } else {
-        setError(response?.error || 'Failed to generate visualization');
-        setSnackbar({
-          open: true,
-          message: response?.error || 'Failed to generate visualization',
-          severity: 'error'
-        });
       }
     } catch (err) {
-      console.error('Error generating visualization:', err);
-      setError('Error generating visualization. Please try again.');
+      console.error('Error deleting visualization:', err);
       setSnackbar({
         open: true,
-        message: 'Error generating visualization. Please try again.',
+        message: err.message || 'Failed to delete visualization',
         severity: 'error'
       });
-    } finally {
-      setLoading(false);
     }
-  };
-
-  const handleDownload = (url, title) => {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${title || 'visualization'}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    setSnackbar({
-      open: true,
-      message: 'Downloading visualization...',
-      severity: 'info'
-    });
-  };
-
-  const handleFullScreen = (url) => {
-    setFullScreenImage(url);
-  };
-
-  const closeFullScreen = () => {
-    setFullScreenImage(null);
-  };
-
-  const handleTabChange = (event, newValue) => {
-    setTabValue(newValue);
   };
 
   const handleCloseSnackbar = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
   };
 
-  if (loading && visualizations.length === 0) {
+  if (loading) {
     return (
-      <VisualizationContainer>
-        <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" p={4}>
-          <CircularProgress />
-          <Typography variant="h6" mt={2}>
-            Generating visualizations...
-          </Typography>
-        </Box>
-      </VisualizationContainer>
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight={400}>
+        <CircularProgress />
+      </Box>
     );
   }
 
-  if (error && visualizations.length === 0) {
+  if (error) {
     return (
-      <VisualizationContainer>
-        <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" p={4}>
-          <Typography variant="h6" color="error">
-            {error}
-          </Typography>
-          <Button 
-            variant="contained" 
-            color="primary" 
-            onClick={() => fileData && generateDashboard(fileData.path)}
-            sx={{ mt: 2 }}
-          >
-            Try Again
-          </Button>
-        </Box>
-      </VisualizationContainer>
+      <Alert severity="error" sx={{ mb: 2 }}>
+        {error}
+      </Alert>
     );
   }
 
   return (
-    <VisualizationContainer>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="h5" component="h2">
-          Data Visualizations
-        </Typography>
-        {onClose && (
-          <Button 
-            variant="outlined" 
-            color="primary" 
-            startIcon={<CloseIcon />}
-            onClick={onClose}
-          >
-            Close
-          </Button>
-        )}
-      </Box>
+    <Box>
+      <Typography variant="h6" gutterBottom>
+        Visualizations for {fileData?.original_name}
+      </Typography>
 
-      <Tabs value={tabValue} onChange={handleTabChange} sx={{ mb: 2 }}>
-        <Tab label="Visualizations" />
-        <Tab label="Data Summary" />
-      </Tabs>
-
-      {tabValue === 0 && (
-        <>
-          {loading && (
-            <Box display="flex" justifyContent="center" my={2}>
-              <CircularProgress size={24} />
-            </Box>
-          )}
-
-          <Grid container spacing={3}>
-            {visualizations.map((viz, index) => (
-              <Grid item xs={12} sm={6} md={4} key={index}>
-                <Card>
-                  <CardMedia
-                    component="img"
-                    height="200"
-                    image={viz.url}
-                    alt={viz.title || 'Visualization'}
-                    sx={{ objectFit: 'contain', bgcolor: 'white', p: 1 }}
-                  />
-                  <CardContent>
-                    <Typography variant="h6" component="div">
-                      {viz.title || 'Visualization'}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {viz.description || 'Data visualization'}
-                    </Typography>
-                  </CardContent>
-                  <CardActions>
-                    <Button 
-                      size="small" 
-                      startIcon={<DownloadIcon />}
-                      onClick={() => handleDownload(viz.url, viz.title)}
-                    >
-                      Download
-                    </Button>
-                    <Button 
-                      size="small" 
-                      startIcon={<FullscreenIcon />}
-                      onClick={() => handleFullScreen(viz.url)}
-                    >
-                      Full Screen
-                    </Button>
-                  </CardActions>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
-
-          {visualizations.length === 0 && !loading && (
-            <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" p={4}>
-              <Typography variant="body1">
-                No visualizations available. Try generating some!
-              </Typography>
-            </Box>
-          )}
-
-          <Box mt={4}>
-            <Typography variant="h6" gutterBottom>
-              Generate Custom Visualizations
-            </Typography>
-            <Grid container spacing={2}>
-              <Grid item>
-                <Button 
-                  variant="contained" 
-                  color="primary"
-                  onClick={() => generateCustomVisualization('histogram')}
-                  disabled={loading}
-                >
-                  Histogram
-                </Button>
-              </Grid>
-              <Grid item>
-                <Button 
-                  variant="contained" 
-                  color="primary"
-                  onClick={() => generateCustomVisualization('scatter')}
-                  disabled={loading}
-                >
-                  Scatter Plot
-                </Button>
-              </Grid>
-              <Grid item>
-                <Button 
-                  variant="contained" 
-                  color="primary"
-                  onClick={() => generateCustomVisualization('bar')}
-                  disabled={loading}
-                >
-                  Bar Chart
-                </Button>
-              </Grid>
-              <Grid item>
-                <Button 
-                  variant="contained" 
-                  color="primary"
-                  onClick={() => generateCustomVisualization('heatmap')}
-                  disabled={loading}
-                >
-                  Correlation Heatmap
-                </Button>
-              </Grid>
-              <Grid item>
-                <Button 
-                  variant="contained" 
-                  color="primary"
-                  onClick={() => generateCustomVisualization('boxplot')}
-                  disabled={loading}
-                >
-                  Box Plot
-                </Button>
-              </Grid>
-            </Grid>
-          </Box>
-        </>
-      )}
-
-      {tabValue === 1 && stats && (
-        <Paper elevation={2} sx={{ p: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Data Summary
-          </Typography>
-          
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper elevation={1} sx={{ p: 2, bgcolor: 'primary.light', color: 'primary.contrastText' }}>
-                <Typography variant="body2">Rows</Typography>
-                <Typography variant="h4">{stats.rows}</Typography>
-              </Paper>
-            </Grid>
-            
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper elevation={1} sx={{ p: 2, bgcolor: 'secondary.light', color: 'secondary.contrastText' }}>
-                <Typography variant="body2">Columns</Typography>
-                <Typography variant="h4">{stats.columns}</Typography>
-              </Paper>
-            </Grid>
-            
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper elevation={1} sx={{ p: 2, bgcolor: 'success.light', color: 'success.contrastText' }}>
-                <Typography variant="body2">Numeric Columns</Typography>
-                <Typography variant="h4">{stats.numeric_columns?.length || 0}</Typography>
-              </Paper>
-            </Grid>
-            
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper elevation={1} sx={{ p: 2, bgcolor: 'info.light', color: 'info.contrastText' }}>
-                <Typography variant="body2">Categorical Columns</Typography>
-                <Typography variant="h4">{stats.categorical_columns?.length || 0}</Typography>
-              </Paper>
-            </Grid>
-          </Grid>
-          
-          <Box mt={4}>
-            <Typography variant="subtitle1" gutterBottom>
-              Numeric Columns
-            </Typography>
-            <Grid container spacing={1}>
-              {stats.numeric_columns?.map((col, index) => (
-                <Grid item key={index}>
-                  <Chip label={col} color="primary" variant="outlined" />
-                </Grid>
-              ))}
-              {(!stats.numeric_columns || stats.numeric_columns.length === 0) && (
-                <Grid item>
-                  <Typography variant="body2" color="text.secondary">
-                    No numeric columns found
+      <Grid container spacing={3}>
+        {visualizations.map((visualization) => (
+          <Grid item xs={12} md={6} key={visualization.id}>
+            <Card>
+              <CardContent>
+                <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                  <Typography variant="h6">
+                    {visualization.title}
                   </Typography>
-                </Grid>
-              )}
-            </Grid>
-          </Box>
-          
-          <Box mt={3}>
-            <Typography variant="subtitle1" gutterBottom>
-              Categorical Columns
-            </Typography>
-            <Grid container spacing={1}>
-              {stats.categorical_columns?.map((col, index) => (
-                <Grid item key={index}>
-                  <Chip label={col} color="secondary" variant="outlined" />
-                </Grid>
-              ))}
-              {(!stats.categorical_columns || stats.categorical_columns.length === 0) && (
-                <Grid item>
-                  <Typography variant="body2" color="text.secondary">
-                    No categorical columns found
-                  </Typography>
-                </Grid>
-              )}
-            </Grid>
-          </Box>
-          
-          <Box mt={3}>
-            <Typography variant="subtitle1" gutterBottom>
-              Column Types
-            </Typography>
-            <TableContainer component={Paper} variant="outlined">
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell><strong>Column</strong></TableCell>
-                    <TableCell><strong>Type</strong></TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {Object.entries(stats.column_types || {}).map(([col, type], index) => (
-                    <TableRow key={index}>
-                      <TableCell>{col}</TableCell>
-                      <TableCell>{type}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Box>
-        </Paper>
-      )}
+                  <IconButton
+                    onClick={() => handleViewVisualization(visualization)}
+                    size="small"
+                  >
+                    <FullscreenIcon />
+                  </IconButton>
+                </Box>
+                <Typography variant="body2" color="textSecondary" gutterBottom>
+                  {visualization.description}
+                </Typography>
+                <Box
+                  component="iframe"
+                  src={`/api/data/visualization/${visualization.id}`}
+                  width="100%"
+                  height={300}
+                  frameBorder="0"
+                  sx={{ border: '1px solid #eee', borderRadius: 1 }}
+                />
+              </CardContent>
+              <Divider />
+              <CardActions>
+                <Button
+                  size="small"
+                  startIcon={<DeleteIcon />}
+                  onClick={() => handleDeleteVisualization(visualization)}
+                  color="error"
+                >
+                  Delete
+                </Button>
+              </CardActions>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
 
-      {/* Full screen modal */}
-      {fullScreenImage && (
-        <FullScreenModal onClick={closeFullScreen}>
-          <FullScreenImage 
-            src={fullScreenImage} 
-            alt="Visualization" 
-            onClick={(e) => e.stopPropagation()} 
-          />
-          <CloseButton 
-            variant="contained" 
-            startIcon={<CloseIcon />}
-            onClick={closeFullScreen}
-          >
-            Close
-          </CloseButton>
-        </FullScreenModal>
-      )}
-
-      {/* Snackbar for notifications */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
@@ -491,14 +220,14 @@ const Visualization = ({ fileData, onClose }) => {
       >
         <Alert 
           onClose={handleCloseSnackbar} 
-          severity={snackbar.severity} 
+          severity={snackbar.severity}
           variant="filled"
           sx={{ width: '100%' }}
         >
           {snackbar.message}
         </Alert>
       </Snackbar>
-    </VisualizationContainer>
+    </Box>
   );
 };
 

@@ -7,14 +7,47 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
+  },
+  withCredentials: true,  // Enable sending cookies
+  timeout: 30000,  // 30 second timeout
+  maxRetries: 3,  // Add retry capability
+  retryDelay: 1000  // 1 second between retries
+});
+
+// Add CORS headers to all requests
+api.defaults.headers.common['Access-Control-Allow-Origin'] = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+api.defaults.headers.common['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS';
+api.defaults.headers.common['Access-Control-Allow-Headers'] = 'Origin, Content-Type, Accept, Authorization';
+api.defaults.headers.common['Access-Control-Allow-Credentials'] = 'true';
+
+// Add retry interceptor
+api.interceptors.response.use(undefined, async (err) => {
+  const { config } = err;
+  if (!config || !config.retry) {
+    return Promise.reject(err);
   }
+
+  config.retry -= 1;
+  if (config.retry === 0) {
+    return Promise.reject(err);
+  }
+
+  // Delay the retry
+  await new Promise(resolve => setTimeout(resolve, config.retryDelay || 1000));
+  
+  // Create new promise to handle retry
+  return api(config);
 });
 
 // Request interceptor
 api.interceptors.request.use(
   (config) => {
-    const token = getAccessToken();
+    // Add retry configuration
+    config.retry = config.retry || api.defaults.maxRetries;
+    config.retryDelay = config.retryDelay || api.defaults.retryDelay;
     
+    // Add authorization if available
+    const token = getAccessToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }

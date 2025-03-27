@@ -1,81 +1,144 @@
-from flask import Flask, jsonify
+"""
+Main application entry point for the RR-Chatbot backend.
+This module initializes the Flask application with all necessary configurations,
+extensions, and blueprints. It also sets up logging, database connections,
+and error handling.
+"""
+
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_socketio import SocketIO
 import os
 from dotenv import load_dotenv
-from routes.chat_routes import chat_bp
-from routes.monitoring_routes import monitoring_bp
-from routes.data_routes import data_bp
-from routes.visualization_routes import visualization_bp
-from services.cache_service import cache_service
-import multiprocessing
 import redis
 import logging
+from logging.handlers import RotatingFileHandler
+import traceback
+from routes.chat_routes import chat_bp
+from routes.auth_routes import auth_bp
+from routes.user_routes import user_bp
+from models.db import db
 
 # Load environment variables
 load_dotenv()
 
-# Initialize logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Initialize Flask app
-app = Flask(__name__)
-CORS(app)
-
-# Configure Redis
-app.config['REDIS_HOST'] = os.getenv('REDIS_HOST', 'localhost')
-app.config['REDIS_PORT'] = int(os.getenv('REDIS_PORT', 6379))
-app.config['REDIS_DB'] = int(os.getenv('REDIS_DB', 0))
-
-# Initialize Socket.IO
-socketio = SocketIO(app, cors_allowed_origins="*")
-
-# Register blueprints
-app.register_blueprint(chat_bp)
-app.register_blueprint(monitoring_bp)
-app.register_blueprint(data_bp)
-app.register_blueprint(visualization_bp)
-
-# Create necessary directories
-os.makedirs('uploads', exist_ok=True)
-os.makedirs('static/visualizations', exist_ok=True)
-os.makedirs('static/dashboards', exist_ok=True)
-
-# Initialize services
-try:
-    # Initialize Redis connection
-    redis_client = redis.Redis(
-        host=app.config['REDIS_HOST'],
-        port=app.config['REDIS_PORT'],
-        db=app.config['REDIS_DB']
+def setup_logging():
+    """Configure logging with rotation and proper formatting."""
+    log_dir = 'logs'
+    os.makedirs(log_dir, exist_ok=True)
+    
+    # Configure file handler with rotation
+    file_handler = RotatingFileHandler(
+        os.path.join(log_dir, 'app.log'),
+        maxBytes=10240000,  # 10MB
+        backupCount=5
     )
-    redis_client.ping()  # Test connection
-    logger.info("Redis connection established successfully")
-except Exception as e:
-    logger.error(f"Error connecting to Redis: {str(e)}")
-    logger.warning("Continuing without Redis connection")
+    file_handler.setFormatter(logging.Formatter(
+        '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+    ))
+    
+    # Configure console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter(
+        '%(asctime)s %(levelname)s: %(message)s'
+    ))
+    
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+    
+    return root_logger
 
-@app.route('/api/health')
-def health_check():
-    """Health check endpoint"""
-    return jsonify({"status": "healthy"})
-
-@app.route('/')
-def index():
-    """Root endpoint"""
-    return jsonify({
-        "name": "RR Chatbot API",
-        "version": "1.0.0",
-        "status": "running"
+def create_app():
+    """Create and configure the Flask application."""
+    logger = setup_logging()
+    logger.info("Starting RR-Chatbot Backend...")
+    
+    # Initialize Flask app
+    app = Flask(__name__)
+    
+    # Configure CORS
+    CORS(app, resources={
+        r"/*": {
+            "origins": ["http://localhost:3000", "http://127.0.0.1:3000"],
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization"],
+            "supports_credentials": True
+        }
     })
+    logger.info("Flask app initialized with CORS")
+    
+    # Configure app
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///app.db')
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'your-secret-key')
+    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 3600  # 1 hour
+    
+    # Initialize extensions
+    db.init_app(app)
+    
+    # Register blueprints
+    app.register_blueprint(chat_bp)  # Remove /api prefix to allow /public/chat
+    app.register_blueprint(auth_bp, url_prefix='/auth')
+    app.register_blueprint(user_bp, url_prefix='/api/users')
+    
+    # Create database tables
+    with app.app_context():
+        db.create_all()
+    
+    # Configure Redis
+    app.config['REDIS_HOST'] = os.getenv('REDIS_HOST', 'localhost')
+    app.config['REDIS_PORT'] = int(os.getenv('REDIS_PORT', 6379))
+    app.config['REDIS_DB'] = int(os.getenv('REDIS_DB', 0))
+    logger.info(f"Redis config: {app.config['REDIS_HOST']}:{app.config['REDIS_PORT']}/{app.config['REDIS_DB']}")
+    
+    # Initialize Socket.IO
+    socketio = SocketIO(app, cors_allowed_origins=["http://localhost:3000"], async_mode='eventlet')
+    logger.info("SocketIO initialized")
+    
+    # Create necessary directories
+    os.makedirs('uploads', exist_ok=True)
+    os.makedirs('static/visualizations', exist_ok=True)
+    os.makedirs('static/dashboards', exist_ok=True)
+    logger.info("Directories created")
+    
+    # Initialize Redis connection
+    try:
+        redis_client = redis.Redis(
+            host=app.config['REDIS_HOST'],
+            port=app.config['REDIS_PORT'],
+            db=app.config['REDIS_DB'],
+            socket_timeout=5
+        )
+        redis_client.ping()
+        logger.info("Redis connection established")
+    except redis.ConnectionError as e:
+        logger.error(f"Redis connection failed: {str(e)}")
+        # Don't raise the error, allow the app to start without Redis
+    
+    # Error handling middleware
+    @app.errorhandler(Exception)
+    def handle_error(error):
+        logger.error(f"Unhandled error: {str(error)}")
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'error': str(error),
+            'message': 'An unexpected error occurred',
+            'success': False
+        }), 500
+
+    @app.after_request
+    def after_request(response):
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+    
+    return app
 
 if __name__ == '__main__':
-    # Add freeze_support for Windows multiprocessing
-    multiprocessing.freeze_support()
-    
-    # Import data_processing_service here to avoid circular imports
-    from services.data_processing_service import data_processing_service
-    
-    port = int(os.getenv('PORT', 5000))
-    socketio.run(app, host='0.0.0.0', port=port, debug=True) 
+    app = create_app()
+    app.run(debug=True, host='0.0.0.0', port=5000)

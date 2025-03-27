@@ -36,21 +36,23 @@ uvicorn>=0.23.0
 pydantic>=2.5.0
 
 # Machine Learning Essentials
-tensorflow-cpu==2.12.0
-tensorflow-io-gcs-filesystem==0.31.0  # Added explicitly per pyproject.toml
+tensorflow==2.17.0  # Updated to latest
+tensorflow-io-gcs-filesystem==0.31.0
 keras>=2.12.0
 torch>=2.0.0
 torchvision>=0.15.0
 pytorch-lightning>=1.9.0
 optuna>=3.5.0
+optuna-integration[sklearn]
 shap>=0.44.0
 lime>=0.2.0
-scikit-image>=0.22.0  # Adjusted per pyproject.toml (was >=0.25.2)
+scikit-image>=0.22.0
 imageio>=2.37.0
 tifffile>=2025.3.0
 lazy-loader>=0.4.0
 mlflow>=2.11.0
 mistralai==0.0.12
+tiktoken>=0.7.0
 
 # Data Processing
 openpyxl>=3.1.0
@@ -85,3 +87,6 @@ pymongo>=4.5.0
 python-magic>=0.4.0
 cryptography>=41.0.0
 urllib3>=1.26.0
+
+# LLM
+tiktoken>=0.7.0

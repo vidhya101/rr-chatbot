@@ -23,8 +23,6 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import DeleteIcon from '@mui/icons-material/Delete';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import BarChartIcon from '@mui/icons-material/BarChart';
-import apiService from '../services/apiService';
-import Visualization from './Visualization';
 
 const UploadBox = styled(Paper)(({ theme }) => ({
   padding: theme.spacing(3),
@@ -93,10 +91,6 @@ const FileUpload = ({ onFileUpload, onFileSelect }) => {
     });
   };
 
-  const handleUploadClick = () => {
-    fileInputRef.current.click();
-  };
-
   const handleUpload = async () => {
     if (files.length === 0) {
       setSnackbar({
@@ -111,50 +105,55 @@ const FileUpload = ({ onFileUpload, onFileSelect }) => {
     setUploadProgress(0);
 
     try {
-      const formData = new FormData();
-      
-      files.forEach((file, index) => {
-        formData.append(`file${index}`, file);
-      });
+      const totalFiles = files.length;
+      const uploadedFiles = [];
 
-      const response = await apiService.uploadFile(formData, (progressEvent) => {
-        const percentCompleted = Math.round(
-          (progressEvent.loaded * 100) / progressEvent.total
-        );
-        setUploadProgress(percentCompleted);
-      });
+      for (let i = 0; i < totalFiles; i++) {
+        const formData = new FormData();
+        formData.append('file', files[i]);
 
-      if (response && response.success) {
-        // Call the onFileUpload callback if provided
-        if (onFileUpload) {
-          onFileUpload(response.files);
+        const response = await fetch('/api/data/upload', {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to upload file');
         }
-        
-        setSnackbar({
-          open: true,
-          message: 'Files uploaded successfully',
-          severity: 'success'
-        });
-        
-        // Clear the file list after successful upload
-        setFiles([]);
-      } else {
-        setSnackbar({
-          open: true,
-          message: response?.error || 'Upload failed',
-          severity: 'error'
-        });
+
+        if (data.success) {
+          uploadedFiles.push(data.file);
+        }
+
+        // Update progress
+        setUploadProgress(((i + 1) / totalFiles) * 100);
       }
-    } catch (err) {
-      console.error('Error uploading files:', err);
+
+      // Clear files list after successful upload
+      setFiles([]);
+      setUploadProgress(0);
+
+      // Call onFileUpload callback with uploaded files
+      if (onFileUpload) {
+        onFileUpload(uploadedFiles);
+      }
+
       setSnackbar({
         open: true,
-        message: 'Error uploading files. Please try again.',
+        message: 'All files uploaded successfully',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Upload error:', error);
+      setSnackbar({
+        open: true,
+        message: error.message || 'Failed to upload files',
         severity: 'error'
       });
     } finally {
       setUploading(false);
-      setUploadProgress(0);
     }
   };
 
@@ -169,123 +168,120 @@ const FileUpload = ({ onFileUpload, onFileSelect }) => {
 
   const handleClosePreview = () => {
     setShowPreview(false);
+    setPreviewFile(null);
   };
 
   const handleVisualizeFile = async (file) => {
     try {
-      // First upload the file if it's not already uploaded
-      if (!file.path) {
-        setUploading(true);
-        const formData = new FormData();
-        formData.append('file', file);
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const uploadResponse = await fetch('/api/data/upload', {
+        method: 'POST',
+        body: formData
+      });
+      
+      const uploadData = await uploadResponse.json();
+      
+      if (!uploadResponse.ok) {
+        throw new Error(uploadData.error || 'Failed to upload file');
+      }
+      
+      if (uploadData.success) {
+        const visualizeResponse = await fetch('/api/data/visualize', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            fileId: uploadData.file.id,
+            type: 'auto'
+          })
+        });
         
-        const response = await apiService.uploadFile(formData);
+        const visualizeData = await visualizeResponse.json();
         
-        if (response && response.success) {
-          setSelectedFile(response.files[0]);
-          setShowVisualization(true);
-        } else {
-          setSnackbar({
-            open: true,
-            message: response?.error || 'Failed to upload file for visualization',
-            severity: 'error'
-          });
+        if (!visualizeResponse.ok) {
+          throw new Error(visualizeData.error || 'Failed to create visualization');
         }
-        setUploading(false);
-      } else {
-        // File is already uploaded
-        setSelectedFile(file);
-        setShowVisualization(true);
+        
+        if (visualizeData.success) {
+          // Open visualization in new window/tab
+          window.open(`/api/data/visualization/${visualizeData.visualization.id}`, '_blank');
+        }
       }
     } catch (err) {
-      console.error('Error preparing file for visualization:', err);
+      console.error('Error visualizing file:', err);
       setSnackbar({
         open: true,
-        message: 'Error preparing file for visualization',
+        message: err.message || 'Error preparing file for visualization',
         severity: 'error'
       });
-      setUploading(false);
     }
-  };
-
-  const handleCloseVisualization = () => {
-    setShowVisualization(false);
   };
 
   const handleCloseSnackbar = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
   };
 
-  const getFilePreview = (file) => {
-    if (file.type.startsWith('image/')) {
-      return URL.createObjectURL(file);
-    }
-    return null;
-  };
-
-  const isDataFile = (file) => {
-    const dataFileExtensions = ['.csv', '.xlsx', '.xls', '.json', '.txt', '.tsv'];
-    const fileName = file.name.toLowerCase();
-    return dataFileExtensions.some(ext => fileName.endsWith(ext));
-  };
-
   return (
     <Box>
-      <UploadBox
+      <Box
         onDragOver={handleDragOver}
         onDrop={handleDrop}
-        onClick={handleUploadClick}
+        sx={{ mb: 3 }}
       >
-        <CloudUploadIcon fontSize="large" color="primary" />
-        <Typography variant="h6" gutterBottom>
-          Drag & Drop Files Here
-        </Typography>
-        <Typography variant="body2" color="textSecondary">
-          or click to browse
-        </Typography>
-        <HiddenInput
-          type="file"
-          multiple
-          ref={fileInputRef}
-          onChange={handleFileInputChange}
-        />
-      </UploadBox>
+        <UploadBox>
+          <input
+            type="file"
+            ref={fileInputRef}
+            style={{ display: 'none' }}
+            onChange={handleFileInputChange}
+            multiple
+          />
+          <CloudUploadIcon sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
+          <Typography variant="h6" gutterBottom>
+            Drag & Drop Files Here
+          </Typography>
+          <Typography variant="body2" color="textSecondary" gutterBottom>
+            or
+          </Typography>
+          <Button
+            variant="contained"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            Browse Files
+          </Button>
+          <Typography variant="caption" color="textSecondary" display="block" sx={{ mt: 1 }}>
+            Supported formats: CSV, Excel, JSON, Parquet
+          </Typography>
+        </UploadBox>
+      </Box>
 
       {files.length > 0 && (
-        <Box mt={3}>
+        <Box>
           <Typography variant="h6" gutterBottom>
-            Selected Files ({files.length})
+            Selected Files
           </Typography>
           <List>
             {files.map((file, index) => (
               <ListItem key={index} divider>
                 <ListItemText
                   primary={file.name}
-                  secondary={`${(file.size / 1024).toFixed(2)} KB`}
+                  secondary={`Size: ${(file.size / 1024).toFixed(2)} KB`}
                 />
                 <ListItemSecondaryAction>
-                  {file.type.startsWith('image/') && (
-                    <IconButton 
-                      edge="end" 
-                      aria-label="preview" 
-                      onClick={() => handlePreviewFile(file)}
-                    >
-                      <VisibilityIcon />
-                    </IconButton>
-                  )}
-                  {isDataFile(file) && (
-                    <IconButton 
-                      edge="end" 
-                      aria-label="visualize" 
-                      onClick={() => handleVisualizeFile(file)}
-                      sx={{ mr: 1 }}
-                    >
-                      <BarChartIcon />
-                    </IconButton>
-                  )}
-                  <IconButton 
-                    edge="end" 
-                    aria-label="delete" 
+                  <IconButton
+                    edge="end"
+                    aria-label="visualize"
+                    onClick={() => handleVisualizeFile(file)}
+                    sx={{ mr: 1 }}
+                  >
+                    <BarChartIcon />
+                  </IconButton>
+                  <IconButton
+                    edge="end"
+                    aria-label="delete"
                     onClick={() => handleRemoveFile(index)}
                   >
                     <DeleteIcon />
@@ -302,57 +298,12 @@ const FileUpload = ({ onFileUpload, onFileSelect }) => {
               disabled={uploading}
               startIcon={uploading ? <CircularProgress size={20} /> : null}
             >
-              {uploading ? `Uploading ${uploadProgress}%` : 'Upload Files'}
+              {uploading ? `Uploading ${uploadProgress.toFixed(0)}%` : 'Upload Files'}
             </Button>
           </Box>
         </Box>
       )}
 
-      {/* File Preview Dialog */}
-      <Dialog open={showPreview} onClose={handleClosePreview} maxWidth="md" fullWidth>
-        <DialogTitle>File Preview</DialogTitle>
-        <DialogContent>
-          {previewFile && previewFile.type.startsWith('image/') && (
-            <Box display="flex" justifyContent="center">
-              <img 
-                src={getFilePreview(previewFile)} 
-                alt={previewFile.name} 
-                style={{ maxWidth: '100%', maxHeight: '70vh' }} 
-              />
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleClosePreview} color="primary">
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Visualization Dialog */}
-      <Dialog 
-        open={showVisualization} 
-        onClose={handleCloseVisualization} 
-        maxWidth="lg" 
-        fullWidth
-      >
-        <DialogTitle>Data Visualization</DialogTitle>
-        <DialogContent>
-          {selectedFile && (
-            <Visualization 
-              fileData={selectedFile} 
-              onClose={handleCloseVisualization} 
-            />
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseVisualization} color="primary">
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Snackbar for notifications */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
@@ -361,7 +312,7 @@ const FileUpload = ({ onFileUpload, onFileSelect }) => {
       >
         <Alert 
           onClose={handleCloseSnackbar} 
-          severity={snackbar.severity} 
+          severity={snackbar.severity}
           variant="filled"
           sx={{ width: '100%' }}
         >

@@ -15,11 +15,38 @@ export const sendMessage = async (message, chatId = null, model = null) => {
       ...(model && { model })
     };
     
-    const response = await api.post('/public/chat', payload);
-    return response.data;
+    // Try the public endpoint first
+    try {
+      const response = await api.post('/public/chat', payload);
+      
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Failed to get response from AI');
+      }
+      
+      return {
+        message: response.data.response,
+        model: response.data.model,
+        processingTime: response.data.processing_time
+      };
+    } catch (publicError) {
+      // If public endpoint fails, try the authenticated endpoint
+      if (chatId) {
+        const authResponse = await api.post(`/api/chats/${chatId}/messages`, payload);
+        return {
+          message: authResponse.data.message,
+          model: authResponse.data.model,
+          processingTime: authResponse.data.processing_time
+        };
+      }
+      throw publicError;
+    }
   } catch (error) {
     console.error('Error sending message:', error);
-    throw error;
+    throw new Error(
+      error.response?.data?.error || 
+      error.message || 
+      'Failed to send message. Please try again.'
+    );
   }
 };
 
