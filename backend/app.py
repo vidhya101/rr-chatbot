@@ -18,6 +18,8 @@ from routes.chat_routes import chat_bp
 from routes.auth_routes import auth_bp
 from routes.user_routes import user_bp
 from models.db import db
+import tempfile
+from utils.db_utils import get_db_connection
 
 # Load environment variables
 load_dotenv()
@@ -75,6 +77,11 @@ def create_app():
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'your-secret-key')
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 3600  # 1 hour
+
+    # Configure file upload settings
+    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB max upload size
+    app.config['UPLOAD_FOLDER'] = 'uploads'
+    app.config['TEMP_FOLDER'] = tempfile.gettempdir()
     
     # Initialize extensions
     db.init_app(app)
@@ -83,10 +90,44 @@ def create_app():
     app.register_blueprint(chat_bp)  # Remove /api prefix to allow /public/chat
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(user_bp, url_prefix='/api/users')
+
+    # Import and register data visualization routes
+    from routes.data_visualization_routes import data_viz_bp
+    app.register_blueprint(data_viz_bp, url_prefix='/api')  # Routes now have /data prefix
+
+    # Import and register model routes
+    from routes.model_routes import model_routes
+    app.register_blueprint(model_routes, url_prefix='/api')
     
     # Create database tables
     with app.app_context():
         db.create_all()
+        
+        # Ensure logs table exists (using raw SQL if needed)
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Create logs table if it doesn't exist
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS logs (
+                id TEXT PRIMARY KEY,
+                user_id TEXT,
+                level TEXT NOT NULL,
+                source TEXT NOT NULL,
+                message TEXT NOT NULL,
+                details TEXT,
+                ip_address TEXT,
+                user_agent TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            ''')
+            
+            conn.commit()
+            conn.close()
+            logger.info("Logs table initialized")
+        except Exception as e:
+            logger.error(f"Error creating logs table: {str(e)}")
     
     # Configure Redis
     app.config['REDIS_HOST'] = os.getenv('REDIS_HOST', 'localhost')
@@ -131,10 +172,15 @@ def create_app():
 
     @app.after_request
     def after_request(response):
-        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
+        response.headers.add('Access-Control-Allow-Origin', '*')
         response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
         response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
         response.headers.add('Access-Control-Allow-Credentials', 'true')
+        
+        # Add additional headers for debugging
+        if request.method == 'OPTIONS':
+            logger.info(f"Handling OPTIONS request for: {request.path}")
+        
         return response
     
     return app

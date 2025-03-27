@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import axios from 'axios';
 import './FileUpload.css';
 import { 
   Box, 
@@ -107,28 +108,34 @@ const FileUpload = ({ onFileUpload, onFileSelect }) => {
     try {
       const totalFiles = files.length;
       const uploadedFiles = [];
+      
+      console.log('Starting file upload...');
 
       for (let i = 0; i < totalFiles; i++) {
         const formData = new FormData();
         formData.append('file', files[i]);
+        
+        console.log(`Uploading file ${i+1}/${totalFiles}: ${files[i].name}`);
 
-        const response = await fetch('/api/data/upload', {
-          method: 'POST',
-          body: formData
+        // Use direct axios call with full URL
+        const response = await axios.post('http://localhost:5000/api/data/upload', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          },
+          onUploadProgress: (progressEvent) => {
+            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            console.log(`Upload progress: ${percentCompleted}%`);
+            setUploadProgress(percentCompleted);
+          }
         });
+        
+        console.log('Upload response:', response.data);
 
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || 'Failed to upload file');
+        if (response.data.success && response.data.file) {
+          uploadedFiles.push(response.data.file);
+        } else {
+          throw new Error(response.data.error || 'Failed to upload file');
         }
-
-        if (data.success) {
-          uploadedFiles.push(data.file);
-        }
-
-        // Update progress
-        setUploadProgress(((i + 1) / totalFiles) * 100);
       }
 
       // Clear files list after successful upload
@@ -147,9 +154,18 @@ const FileUpload = ({ onFileUpload, onFileSelect }) => {
       });
     } catch (error) {
       console.error('Upload error:', error);
+      
+      // Provide more detailed error messages
+      let errorMessage = 'Failed to upload files';
+      if (error.response && error.response.data) {
+        errorMessage = error.response.data.error || error.response.data.message || errorMessage;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       setSnackbar({
         open: true,
-        message: error.message || 'Failed to upload files',
+        message: errorMessage,
         severity: 'error'
       });
     } finally {
@@ -176,45 +192,60 @@ const FileUpload = ({ onFileUpload, onFileSelect }) => {
       const formData = new FormData();
       formData.append('file', file);
       
-      const uploadResponse = await fetch('/api/data/upload', {
-        method: 'POST',
-        body: formData
+      console.log(`Visualizing file: ${file.name}`);
+      
+      // Use direct axios call with full URL for upload
+      console.log('Uploading file for visualization...');
+      const uploadResponse = await axios.post('http://localhost:5000/api/data/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
       });
       
-      const uploadData = await uploadResponse.json();
+      console.log('Upload response:', uploadResponse.data);
       
-      if (!uploadResponse.ok) {
-        throw new Error(uploadData.error || 'Failed to upload file');
+      if (!uploadResponse.data.success) {
+        throw new Error(uploadResponse.data.error || 'Failed to upload file');
       }
       
-      if (uploadData.success) {
-        const visualizeResponse = await fetch('/api/data/visualize', {
-          method: 'POST',
+      if (uploadResponse.data.file) {
+        console.log('Creating visualization...');
+        const visualizeResponse = await axios.post('http://localhost:5000/api/data/visualize', {
+          fileId: uploadResponse.data.file.id,
+          type: 'auto'
+        }, {
           headers: {
             'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            fileId: uploadData.file.id,
-            type: 'auto'
-          })
+          }
         });
         
-        const visualizeData = await visualizeResponse.json();
+        console.log('Visualization response:', visualizeResponse.data);
         
-        if (!visualizeResponse.ok) {
-          throw new Error(visualizeData.error || 'Failed to create visualization');
+        if (!visualizeResponse.data.success) {
+          throw new Error(visualizeResponse.data.error || 'Failed to create visualization');
         }
         
-        if (visualizeData.success) {
+        if (visualizeResponse.data.visualization) {
+          const visualizationUrl = `http://localhost:5000/api/data/visualization/${visualizeResponse.data.visualization.id}`;
+          console.log('Opening visualization URL:', visualizationUrl);
           // Open visualization in new window/tab
-          window.open(`/api/data/visualization/${visualizeData.visualization.id}`, '_blank');
+          window.open(visualizationUrl, '_blank');
         }
       }
     } catch (err) {
       console.error('Error visualizing file:', err);
+      
+      // Provide more detailed error messages
+      let errorMessage = 'Error preparing file for visualization';
+      if (err.response && err.response.data) {
+        errorMessage = err.response.data.error || err.response.data.message || errorMessage;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
       setSnackbar({
         open: true,
-        message: err.message || 'Error preparing file for visualization',
+        message: errorMessage,
         severity: 'error'
       });
     }

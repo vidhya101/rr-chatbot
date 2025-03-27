@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE_URL, fetchWithErrorHandling, debugLog } from '../utils/config';
 import {
   Box,
   Typography,
@@ -43,9 +44,12 @@ import {
   Textsms as TextIcon,
   BubbleChart as ClusterIcon,
   Functions as RegressionIcon,
-  Category as ClassificationIcon
+  Category as ClassificationIcon,
+  Refresh as RefreshIcon,
+  Upload as UploadIcon
 } from '@mui/icons-material';
 import Plot from 'react-plotly.js';
+import { Link } from 'react-router-dom';
 
 const DataModeling = () => {
   const [activeStep, setActiveStep] = useState(0);
@@ -76,25 +80,37 @@ const DataModeling = () => {
   }, []);
 
   const fetchFiles = async () => {
+    setLoading(true);
     try {
-      const response = await fetch('/api/data/files');
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch files');
-      }
-
+      debugLog('Fetching available files for modeling', null);
+      
+      const data = await fetchWithErrorHandling(`${API_BASE_URL}/data/files`);
+      
+      debugLog('Files API response received', data);
+      
       if (data.success) {
+        debugLog(`Loaded ${data.files ? data.files.length : 0} files for modeling`, data.files);
         setUploadedFiles(data.files || []);
+        
+        // Show message if no files available
+        if (!data.files || data.files.length === 0) {
+          setSnackbar({
+            open: true,
+            message: 'No files available. Please upload data files first.',
+            severity: 'info'
+          });
+        }
       }
     } catch (err) {
       console.error('Error fetching files:', err);
       setError('Failed to fetch available files');
       setSnackbar({
         open: true,
-        message: 'Failed to fetch available files',
+        message: 'Failed to fetch available files: ' + (err.message || ''),
         severity: 'error'
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -128,24 +144,24 @@ const DataModeling = () => {
     setLoading(true);
     setError(null);
 
+    const params = {
+      fileId: selectedFile.id,
+      modelType: selectedModel,
+      parameters: modelParameters
+    };
+
     try {
-      const response = await fetch('/api/models/train', {
+      debugLog('Training model with parameters', params);
+      
+      const data = await fetchWithErrorHandling(`${API_BASE_URL}/models/train`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          fileId: selectedFile.id,
-          modelType: selectedModel,
-          parameters: modelParameters
-        })
+        body: JSON.stringify(params)
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to train model');
-      }
+      
+      debugLog('Training response received', data);
 
       if (data.success) {
         setModelResults(data.model);
@@ -158,10 +174,19 @@ const DataModeling = () => {
       }
     } catch (err) {
       console.error('Error training model:', err);
-      setError(err.message || 'Failed to train model');
+      let errorMessage = 'Failed to train model'; 
+      
+      // Try to extract meaningful error message
+      if (err.response && err.response.data) {
+        errorMessage = err.response.data.error || err.response.data.message || errorMessage;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
       setSnackbar({
         open: true,
-        message: err.message || 'Failed to train model',
+        message: errorMessage,
         severity: 'error'
       });
     } finally {
@@ -176,27 +201,90 @@ const DataModeling = () => {
   const renderFileSelection = () => (
     <Card>
       <CardContent>
-        <Typography variant="h6" gutterBottom>
-          Select Data Source
-        </Typography>
-        <List>
-          {uploadedFiles.map((file) => (
-            <ListItem
-              button
-              key={file.id}
-              onClick={() => handleFileSelect(file)}
-              selected={selectedFile?.id === file.id}
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+          <Typography variant="h6">
+            Select Data Source
+          </Typography>
+          <Button 
+            variant="outlined" 
+            size="small" 
+            startIcon={<RefreshIcon />}
+            onClick={fetchFiles}
+            disabled={loading}
+          >
+            Refresh
+          </Button>
+        </Box>
+        
+        {loading ? (
+          <Box display="flex" justifyContent="center" p={3}>
+            <CircularProgress />
+          </Box>
+        ) : uploadedFiles.length > 0 ? (
+          <List>
+            {uploadedFiles.map((file) => (
+              <ListItem
+                button
+                key={file.id}
+                onClick={() => handleFileSelect(file)}
+                selected={selectedFile?.id === file.id}
+                sx={{
+                  borderRadius: 1,
+                  mb: 1,
+                  border: '1px solid',
+                  borderColor: selectedFile?.id === file.id ? 'primary.main' : 'divider',
+                  bgcolor: selectedFile?.id === file.id ? 'primary.light' : 'background.paper',
+                  '&:hover': {
+                    bgcolor: selectedFile?.id === file.id ? 'primary.light' : 'action.hover',
+                  }
+                }}
+              >
+                <ListItemIcon>
+                  <DatasetIcon color={selectedFile?.id === file.id ? 'primary' : 'inherit'} />
+                </ListItemIcon>
+                <ListItemText
+                  primary={file.name || file.original_name}
+                  secondary={
+                    <>
+                      <Typography variant="body2" component="span">
+                        Type: {file.type.toUpperCase()}
+                      </Typography>
+                      <br />
+                      <Typography variant="body2" component="span">
+                        {file.rows != null ? `${file.rows} rows` : ''} 
+                        {file.columns ? `, ${file.columns.length} columns` : ''}
+                      </Typography>
+                    </>
+                  }
+                />
+              </ListItem>
+            ))}
+          </List>
+        ) : (
+          <Box 
+            p={3} 
+            textAlign="center" 
+            border={1} 
+            borderColor="divider" 
+            borderRadius={1}
+            bgcolor="action.hover"
+          >
+            <Typography variant="body1" color="textSecondary" gutterBottom>
+              No data files available
+            </Typography>
+            <Typography variant="body2" color="textSecondary" paragraph>
+              Please upload data files in the Upload section first
+            </Typography>
+            <Button 
+              variant="contained" 
+              component={Link} 
+              to="/upload"
+              startIcon={<UploadIcon />}
             >
-              <ListItemIcon>
-                <DatasetIcon />
-              </ListItemIcon>
-              <ListItemText
-                primary={file.original_name}
-                secondary={`Type: ${file.type}, Rows: ${file.rows}, Columns: ${file.columns.length}`}
-              />
-            </ListItem>
-          ))}
-        </List>
+              Go to Upload
+            </Button>
+          </Box>
+        )}
       </CardContent>
     </Card>
   );
@@ -376,16 +464,18 @@ const DataModeling = () => {
               <Typography variant="subtitle1">
                 Model Performance Metrics
               </Typography>
-              {modelResults.metrics && Object.entries(modelResults.metrics).map(([metric, value]) => (
-                <Box key={metric} display="flex" alignItems="center" mt={1}>
-                  <Typography variant="body2" sx={{ minWidth: 120 }}>
-                    {metric}:
-                  </Typography>
-                  <Typography variant="body1" color="primary">
-                    {typeof value === 'number' ? value.toFixed(4) : value}
-                  </Typography>
-                </Box>
-              ))}
+              {modelResults.metrics && Object.entries(modelResults.metrics)
+                .filter(([metric, value]) => value !== null)
+                .map(([metric, value]) => (
+                  <Box key={metric} display="flex" alignItems="center" mt={1}>
+                    <Typography variant="body2" sx={{ minWidth: 120 }}>
+                      {metric.replace(/_/g, ' ').toUpperCase()}:
+                    </Typography>
+                    <Typography variant="body1" color="primary">
+                      {typeof value === 'number' ? value.toFixed(4) : value}
+                    </Typography>
+                  </Box>
+                ))}
             </Grid>
             {modelResults.plots && modelResults.plots.map((plot, index) => (
               <Grid item xs={12} md={6} key={index}>

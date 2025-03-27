@@ -64,12 +64,15 @@ def get_model(model_id):
             }), 404
         
         # Log request
-        log_info(
-            user_id=request.headers.get('X-User-ID', 'anonymous'),
-            source='model_routes.get_model',
-            message=f'Retrieved model {model_id}',
-            details={'model': model}
-        )
+        try:
+            log_info(
+                user_id=request.headers.get('X-User-ID', 'anonymous'),
+                source='model_routes.get_model',
+                message=f'Retrieved model {model_id}',
+                details={'model': model}
+            )
+        except Exception as log_err:
+            logger.warning(f"Could not log info: {str(log_err)}")
         
         return jsonify({
             'success': True,
@@ -81,12 +84,15 @@ def get_model(model_id):
         logger.error(error_message)
         
         # Log error
-        log_error(
-            user_id=request.headers.get('X-User-ID', 'anonymous'),
-            source='model_routes.get_model',
-            message=f'Error getting model {model_id}',
-            details={'error': str(e)}
-        )
+        try:
+            log_error(
+                user_id=request.headers.get('X-User-ID', 'anonymous'),
+                source='model_routes.get_model',
+                message=f'Error getting model {model_id}',
+                details={'error': str(e)}
+            )
+        except Exception as log_err:
+            logger.warning(f"Could not log error: {str(log_err)}")
         
         return jsonify({
             'success': False,
@@ -116,12 +122,15 @@ def update_parameters(model_id):
             }), 404
         
         # Log request
-        log_info(
-            user_id=request.headers.get('X-User-ID', 'anonymous'),
-            source='model_routes.update_parameters',
-            message=f'Updated parameters for model {model_id}',
-            details={'parameters': parameters}
-        )
+        try:
+            log_info(
+                user_id=request.headers.get('X-User-ID', 'anonymous'),
+                source='model_routes.update_parameters',
+                message=f'Updated parameters for model {model_id}',
+                details={'parameters': parameters}
+            )
+        except Exception as log_err:
+            logger.warning(f"Could not log info: {str(log_err)}")
         
         return jsonify({
             'success': True,
@@ -133,12 +142,15 @@ def update_parameters(model_id):
         logger.error(error_message)
         
         # Log error
-        log_error(
-            user_id=request.headers.get('X-User-ID', 'anonymous'),
-            source='model_routes.update_parameters',
-            message=f'Error updating parameters for model {model_id}',
-            details={'error': str(e)}
-        )
+        try:
+            log_error(
+                user_id=request.headers.get('X-User-ID', 'anonymous'),
+                source='model_routes.update_parameters',
+                message=f'Error updating parameters for model {model_id}',
+                details={'error': str(e)}
+            )
+        except Exception as log_err:
+            logger.warning(f"Could not log error: {str(log_err)}")
         
         return jsonify({
             'success': False,

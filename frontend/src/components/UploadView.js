@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
+import { Link } from 'react-router-dom';
+import { API_BASE_URL } from '../utils/config';
 import {
   Box,
   Typography,
@@ -41,6 +44,7 @@ const UploadView = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+  const [successAlert, setSuccessAlert] = useState(false);
   const fileInputRef = useRef();
 
   useEffect(() => {
@@ -52,7 +56,7 @@ const UploadView = () => {
     setError(null);
 
     try {
-      const response = await fetch('/api/data/files');
+      const response = await fetch(`${API_BASE_URL}/data/files`);
       if (!response.ok) throw new Error('Failed to fetch files');
 
       const data = await response.json();
@@ -81,27 +85,47 @@ const UploadView = () => {
     formData.append('file', file);
 
     try {
-      const response = await fetch('/api/data/upload', {
-        method: 'POST',
-        body: formData,
-        onUploadProgress: (progressEvent) => {
-          const progress = (progressEvent.loaded / progressEvent.total) * 100;
-          setUploadProgress(Math.round(progress));
-        },
-      });
-
-      if (!response.ok) throw new Error('Failed to upload file');
-
-      const data = await response.json();
-      setFiles([...files, data.file]);
+      console.log('Starting file upload with axios...');
       
-      // Reset file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+      // Use the centralized API URL
+      const response = await axios.post(`${API_BASE_URL}/data/upload`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        },
+        onUploadProgress: (progressEvent) => {
+          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          console.log(`Upload progress: ${progress}%`);
+          setUploadProgress(progress);
+        }
+      });
+      
+      console.log('Upload response:', response.data);
+      
+      if (response.data.success) {
+        setFiles([...files, response.data.file]);
+        
+        // Reset file input
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        
+        // Show success message with option to go to Data Modeling
+        setSuccessAlert(true);
+      } else {
+        throw new Error(response.data.error || 'Failed to upload file');
       }
     } catch (err) {
       console.error('Error uploading file:', err);
-      setError('Failed to upload file');
+      
+      // Provide more detailed error messages
+      let errorMessage = 'Failed to upload file';
+      if (err.response && err.response.data) {
+        errorMessage = err.response.data.error || err.response.data.message || errorMessage;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
     } finally {
       setUploading(false);
     }
@@ -109,7 +133,7 @@ const UploadView = () => {
 
   const handleDelete = async (fileId) => {
     try {
-      const response = await fetch(`/api/data/files/${fileId}`, {
+      const response = await fetch(`${API_BASE_URL}/data/files/${fileId}`, {
         method: 'DELETE'
       });
 
@@ -124,7 +148,7 @@ const UploadView = () => {
 
   const handleDownload = async (file) => {
     try {
-      const response = await fetch(`/api/data/files/${file.id}/download`);
+      const response = await fetch(`${API_BASE_URL}/data/files/${file.id}/download`);
       if (!response.ok) throw new Error('Failed to download file');
 
       const blob = await response.blob();
@@ -196,6 +220,10 @@ const UploadView = () => {
     </Dialog>
   );
 
+  const handleCloseSuccessAlert = () => {
+    setSuccessAlert(false);
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -250,6 +278,36 @@ const UploadView = () => {
           )}
         </CardContent>
       </Card>
+
+      {successAlert && (
+        <Alert 
+          severity="success" 
+          sx={{ mb: 2 }}
+          action={
+            <Box display="flex" alignItems="center">
+              <Button 
+                color="inherit" 
+                size="small" 
+                onClick={handleCloseSuccessAlert}
+                sx={{ mr: 1 }}
+              >
+                Close
+              </Button>
+              <Button 
+                variant="outlined" 
+                color="inherit" 
+                size="small" 
+                component={Link}
+                to="/modeling"
+              >
+                Go to Data Modeling
+              </Button>
+            </Box>
+          }
+        >
+          File uploaded successfully! You can now process it in the Data Modeling section.
+        </Alert>
+      )}
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>

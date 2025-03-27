@@ -25,24 +25,40 @@ if not os.path.exists(UPLOAD_FOLDER):
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-@data_viz_bp.route('/api/data/upload', methods=['POST'])
+@data_viz_bp.route('/data/test', methods=['GET'])
+def test_route():
+    """Test route to verify the server is working"""
+    logger.info("Test route called")
+    return jsonify({
+        'success': True,
+        'message': 'Data visualization API is working',
+        'timestamp': datetime.utcnow().isoformat()
+    })
+
+@data_viz_bp.route('/data/upload', methods=['POST'])
 def upload_file():
     """Upload a data file for visualization"""
+    logger.info("Upload endpoint called")
     try:
         if 'file' not in request.files:
+            logger.error("No file in request.files")
             return jsonify({
                 'success': False,
                 'error': 'No file provided'
             }), 400
         
         file = request.files['file']
+        logger.info(f"Received file: {file.filename}")
+        
         if file.filename == '':
+            logger.error("Empty filename")
             return jsonify({
                 'success': False,
                 'error': 'No file selected'
             }), 400
         
         if not allowed_file(file.filename):
+            logger.error(f"File type not allowed: {file.filename}")
             return jsonify({
                 'success': False,
                 'error': f'File type not allowed. Allowed types: {", ".join(ALLOWED_EXTENSIONS)}'
@@ -54,14 +70,32 @@ def upload_file():
         file_ext = filename.rsplit('.', 1)[1].lower()
         unique_filename = f"{file_id}.{file_ext}"
         
+        # Create upload directory if it doesn't exist
+        if not os.path.exists(UPLOAD_FOLDER):
+            os.makedirs(UPLOAD_FOLDER)
+            
         # Save file
         file_path = os.path.join(UPLOAD_FOLDER, unique_filename)
+        logger.info(f"Saving file to: {file_path}")
         file.save(file_path)
         
         # Read and store file metadata
         try:
+            # More robust CSV parsing with error handling
             if file_ext == 'csv':
-                df = pd.read_csv(file_path)
+                try:
+                    # First attempt with standard parsing
+                    df = pd.read_csv(file_path)
+                except Exception as csv_err:
+                    logger.info(f"Standard CSV parsing failed, trying with flexible options: {str(csv_err)}")
+                    try:
+                        # Second attempt with more flexible options
+                        df = pd.read_csv(file_path, error_bad_lines=False, warn_bad_lines=True, 
+                                        on_bad_lines='skip', sep=None, engine='python')
+                    except Exception as flex_err:
+                        # Last attempt with very liberal options
+                        logger.warning(f"Flexible CSV parsing failed, trying with minimal options: {str(flex_err)}")
+                        df = pd.read_csv(file_path, sep=None, header=None, engine='python')
             elif file_ext in ['xlsx', 'xls']:
                 df = pd.read_excel(file_path)
             elif file_ext == 'json':
@@ -71,18 +105,21 @@ def upload_file():
             
             metadata = {
                 'id': file_id,
+                'name': filename,  # Match the property name expected by frontend
                 'original_name': filename,
                 'path': file_path,
                 'type': file_ext,
+                'size': os.path.getsize(file_path),  # Add file size for frontend
                 'columns': list(df.columns),
                 'rows': len(df),
-                'upload_time': datetime.utcnow().isoformat()
+                'uploaded_at': datetime.utcnow().isoformat()  # Match the property name expected by frontend
             }
             
             # Store metadata in Redis or database in production
             current_app.uploaded_files = getattr(current_app, 'uploaded_files', {})
             current_app.uploaded_files[file_id] = metadata
             
+            logger.info(f"File uploaded successfully: {file_id}")
             return jsonify({
                 'success': True,
                 'message': 'File uploaded successfully',
@@ -91,7 +128,9 @@ def upload_file():
             
         except Exception as e:
             # Clean up the file if metadata extraction fails
-            os.remove(file_path)
+            logger.error(f"Error processing file metadata: {str(e)}")
+            if os.path.exists(file_path):
+                os.remove(file_path)
             raise Exception(f"Error processing file: {str(e)}")
             
     except Exception as e:
@@ -101,7 +140,7 @@ def upload_file():
             'error': str(e)
         }), 500
 
-@data_viz_bp.route('/api/data/files', methods=['GET'])
+@data_viz_bp.route('/data/files', methods=['GET'])
 def get_uploaded_files():
     """Get list of uploaded files"""
     try:
@@ -117,7 +156,7 @@ def get_uploaded_files():
             'error': str(e)
         }), 500
 
-@data_viz_bp.route('/api/data/visualize', methods=['POST'])
+@data_viz_bp.route('/data/visualize', methods=['POST'])
 def visualize_data():
     """Generate visualization for uploaded file"""
     try:
@@ -207,7 +246,7 @@ def visualize_data():
             'error': str(e)
         }), 500
 
-@data_viz_bp.route('/api/data/visualization/<viz_id>', methods=['GET'])
+@data_viz_bp.route('/data/visualization/<viz_id>', methods=['GET'])
 def get_visualization(viz_id):
     """Get a specific visualization"""
     try:

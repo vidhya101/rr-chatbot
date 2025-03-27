@@ -86,4 +86,74 @@ def start_model_refresh_thread():
                 threading.Event().wait(60)  # Sleep and retry
 
     thread = threading.Thread(target=model_refresher, daemon=True)
-    thread.start() 
+    thread.start()
+
+def train_model(file_id: str, model_type: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Train a model on the provided file with the given parameters.
+    
+    Args:
+        file_id: ID of the file to train on
+        model_type: Type of model to train (regression, classification, clustering)
+        parameters: Model parameters
+        
+    Returns:
+        Dictionary with model training results
+    """
+    try:
+        logger.info(f"Training {model_type} model on file {file_id} with parameters {parameters}")
+        
+        # In a real application, we would:
+        # 1. Load the file using file_id
+        # 2. Preprocess the data
+        # 3. Train the requested model
+        # 4. Return model metrics and visualizations
+        
+        # For demo purposes, return mock results
+        mock_results = {
+            "id": f"{model_type}_{file_id[:8]}",
+            "type": model_type,
+            "file_id": file_id,
+            "parameters": parameters,
+            "metrics": {
+                "accuracy": 0.92 if model_type == "classification" else None,
+                "precision": 0.91 if model_type == "classification" else None,
+                "recall": 0.89 if model_type == "classification" else None,
+                "f1_score": 0.90 if model_type == "classification" else None,
+                "r2_score": 0.85 if model_type == "regression" else None,
+                "mse": 0.15 if model_type == "regression" else None,
+                "silhouette_score": 0.78 if model_type == "clustering" else None
+            },
+            "plots": [
+                {
+                    "data": [
+                        {
+                            "x": [1, 2, 3, 4, 5],
+                            "y": [2, 4, 5, 3, 6],
+                            "type": "scatter",
+                            "mode": "lines+markers",
+                            "name": "Actual"
+                        },
+                        {
+                            "x": [1, 2, 3, 4, 5],
+                            "y": [2.2, 3.8, 5.2, 3.3, 5.8],
+                            "type": "scatter",
+                            "mode": "lines",
+                            "name": "Predicted"
+                        }
+                    ],
+                    "layout": {
+                        "title": "Model Performance",
+                        "xaxis": {"title": "X"},
+                        "yaxis": {"title": "Y"}
+                    }
+                }
+            ]
+        }
+        
+        # Return mock results
+        return mock_results
+        
+    except Exception as e:
+        logger.error(f"Error training model: {str(e)}")
+        raise 

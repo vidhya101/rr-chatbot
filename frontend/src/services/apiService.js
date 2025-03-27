@@ -180,16 +180,40 @@ export const switchModel = async (modelName) => {
 
 // File API functions
 export const uploadFile = async (formData, onUploadProgress) => {
+  console.log('Starting file upload...');
   try {
-    const response = await api.post('/files/upload', formData, {
+    console.log('Uploading file to endpoint:', api.defaults.baseURL.replace('/api', '') + '/api/data/upload');
+    
+    // Check if formData contains a file
+    const hasFile = formData.has('file');
+    const file = formData.get('file');
+    console.log('FormData contains file:', hasFile, file ? file.name : 'No file');
+    
+    // Use axios directly instead of the api instance to control the full URL
+    const response = await axios.post('http://localhost:5000/api/data/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       },
-      onUploadProgress
+      onUploadProgress: (progressEvent) => {
+        if (onUploadProgress) {
+          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          console.log('Upload progress:', progress + '%');
+          onUploadProgress(progress);
+        }
+      }
     });
+    
+    console.log('Upload successful, response:', response.data);
     return response.data;
   } catch (error) {
     console.error('Error uploading file:', error);
+    if (error.response) {
+      console.error('Server error response:', error.response.status, error.response.data);
+    } else if (error.request) {
+      console.error('No response received from server. Network error?');
+    } else {
+      console.error('Error setting up request:', error.message);
+    }
     throw error;
   }
 };
