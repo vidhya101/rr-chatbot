@@ -1,5 +1,8 @@
 {
   "devDependencies": {
     "concurrently": "^9.1.2"
+  },
+  "dependencies": {
+    "plotly.js-dist": "^3.0.1"
   }
 }

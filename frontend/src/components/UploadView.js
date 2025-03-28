@@ -298,7 +298,7 @@ const UploadView = () => {
                 color="inherit" 
                 size="small" 
                 component={Link}
-                to="/modeling"
+                to="/data-modeling"
               >
                 Go to Data Modeling
               </Button>

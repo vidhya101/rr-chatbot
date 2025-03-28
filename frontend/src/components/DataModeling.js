@@ -46,13 +46,14 @@ import {
   Functions as RegressionIcon,
   Category as ClassificationIcon,
   Refresh as RefreshIcon,
-  Upload as UploadIcon
+  Upload as UploadIcon,
+  Visibility as VisibilityIcon
 } from '@mui/icons-material';
 import Plot from 'react-plotly.js';
 import { Link, useNavigate } from 'react-router-dom';
-import Visualizations from './Visualizations';
 
 const DataModeling = () => {
+  const navigate = useNavigate();
   const [activeStep, setActiveStep] = useState(0);
   const [selectedFile, setSelectedFile] = useState(null);
   const [selectedModel, setSelectedModel] = useState('');
@@ -81,8 +82,6 @@ const DataModeling = () => {
   const [analysisResults, setAnalysisResults] = useState(null);
   const [analysisStatus, setAnalysisStatus] = useState(null);
   const [statusPollingInterval, setStatusPollingInterval] = useState(null);
-
-  const navigate = useNavigate();
 
   useEffect(() => {
     fetchFiles();
@@ -327,48 +326,17 @@ const DataModeling = () => {
     };
   };
 
-  const handleVisualizationClick = (data, index) => {
-    setSelectedVisualizationData(data);
-  };
-
-  const handleTransferToVisualizations = async () => {
-    if (!analysisResults?.dashboard?.visualizations) {
+  const handleGoToVisualizations = () => {
+    if (analysisResults?.dashboard?.visualizations) {
+      // Store visualizations in localStorage or state management
+      localStorage.setItem('visualizations', JSON.stringify(analysisResults.dashboard.visualizations));
+      // Navigate to visualizations component
+      navigate('/visualizations');
+    } else {
       setSnackbar({
         open: true,
-        message: 'No visualizations available to transfer',
+        message: 'Please complete data analysis to view visualizations',
         severity: 'warning'
-      });
-      return;
-    }
-
-    try {
-      const response = await fetchWithErrorHandling(`${API_BASE_URL}/visualizations/save`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          visualizations: analysisResults.dashboard.visualizations,
-          source: 'data_modeling',
-          fileId: selectedFile.id
-        })
-      });
-
-      if (response.success) {
-        setSnackbar({
-          open: true,
-          message: 'Visualizations transferred successfully',
-          severity: 'success'
-        });
-        // Navigate to visualizations page
-        navigate('/visualizations');
-      }
-    } catch (err) {
-      console.error('Error transferring visualizations:', err);
-      setSnackbar({
-        open: true,
-        message: 'Failed to transfer visualizations: ' + (err.message || ''),
-        severity: 'error'
       });
     }
   };
@@ -765,29 +733,87 @@ const DataModeling = () => {
     </Card>
   );
 
-  const renderVisualizations = () => (
-    <Card>
-      <CardContent>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-          <Typography variant="h6">
-            Data Visualizations
+  const renderVisualizations = () => {
+    if (!analysisResults?.dashboard?.visualizations) {
+      return (
+        <Box display="flex" justifyContent="center" p={3}>
+          <Typography color="textSecondary">
+            Complete data analysis to see visualizations
           </Typography>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleTransferToVisualizations}
-            disabled={!analysisResults?.dashboard?.visualizations}
-          >
-            Move to Visualizations
-          </Button>
         </Box>
-        <Visualizations 
-          visualizations={analysisResults?.dashboard?.visualizations || []}
-          onVisualizationClick={handleVisualizationClick}
-        />
-      </CardContent>
-    </Card>
-  );
+      );
+    }
+
+    // Ensure we have an array of visualizations
+    const visualizations = Array.isArray(analysisResults.dashboard.visualizations) 
+      ? analysisResults.dashboard.visualizations 
+      : [];
+
+    // Debug logging
+    console.log('Rendering visualizations:', visualizations.length);
+    
+    return (
+      <Box>
+        <Typography variant="h6" gutterBottom>
+          Interactive Data Visualizations
+        </Typography>
+        <Grid container spacing={3}>
+          {visualizations.map((viz, index) => {
+            // Parse the plot data safely
+            let plotData, plotLayout;
+            try {
+              const plotJson = typeof viz.plot === 'string' ? JSON.parse(viz.plot) : viz.plot;
+              plotData = plotJson.data || [];
+              plotLayout = plotJson.layout || {};
+            } catch (err) {
+              console.error('Error parsing visualization:', err);
+              return null;
+            }
+
+            return (
+              <Grid item xs={12} md={6} lg={6} key={index}>
+                <Card variant="outlined" sx={{ height: '100%' }}>
+                  <CardContent>
+                    <Typography variant="subtitle1" gutterBottom>
+                      {viz.title || `Visualization ${index + 1}`}
+                    </Typography>
+                    <Box height={400} width="100%">
+                      <Plot
+                        data={plotData}
+                        layout={{
+                          ...plotLayout,
+                          autosize: true,
+                          height: 350,
+                          width: undefined,
+                          margin: { t: 30, r: 10, b: 30, l: 60 },
+                          hovermode: 'closest'
+                        }}
+                        config={{ 
+                          responsive: true,
+                          displayModeBar: true,
+                          scrollZoom: true
+                        }}
+                        style={{ width: '100%', height: '100%' }}
+                        onClick={(data) => handlePlotClick(data, index)}
+                        onError={(err) => console.error('Plot error:', err)}
+                      />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+            );
+          })}
+        </Grid>
+        {selectedVisualizationData && (
+          <Box mt={2}>
+            <Alert severity="info" onClose={() => setSelectedVisualizationData(null)}>
+              Selected point: {JSON.stringify(selectedVisualizationData)}
+            </Alert>
+          </Box>
+        )}
+      </Box>
+    );
+  };
 
   const renderDashboard = () => (
     <Card>
@@ -801,10 +827,64 @@ const DataModeling = () => {
               <Typography variant="subtitle1" gutterBottom>
                 Data Insights & Visualizations
               </Typography>
-              <Visualizations 
-                visualizations={analysisResults.dashboard.visualizations || []}
-                onVisualizationClick={handleVisualizationClick}
-              />
+              <Grid container spacing={2}>
+                {Array.isArray(analysisResults.dashboard.visualizations) && 
+                 analysisResults.dashboard.visualizations.map((viz, index) => {
+                  // Parse the plot data safely
+                  let plotData, plotLayout;
+                  try {
+                    const plotJson = typeof viz.plot === 'string' ? JSON.parse(viz.plot) : viz.plot;
+                    plotData = plotJson.data || [];
+                    plotLayout = plotJson.layout || {};
+                  } catch (err) {
+                    console.error('Error parsing dashboard visualization:', err);
+                    return null;
+                  }
+
+                  return (
+                    <Grid item xs={12} md={6} lg={6} key={index}>
+                      <Card variant="outlined" sx={{ height: '100%' }}>
+                        <CardContent>
+                          <Typography variant="subtitle1" gutterBottom>
+                            {viz.title || `Visualization ${index + 1}`}
+                          </Typography>
+                          <Box height={400} width="100%">
+                            <Plot
+                              data={plotData}
+                              layout={{
+                                ...plotLayout,
+                                autosize: true,
+                                height: 350,
+                                width: undefined,
+                                margin: { t: 30, r: 10, b: 30, l: 60 },
+                                hovermode: 'closest'
+                              }}
+                              config={{ 
+                                responsive: true,
+                                displayModeBar: true,
+                                scrollZoom: true
+                              }}
+                              style={{ width: '100%', height: '100%' }}
+                              onError={(err) => console.error('Dashboard plot error:', err)}
+                            />
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  );
+                })}
+              </Grid>
+              <Box mt={3} display="flex" justifyContent="center">
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<VisibilityIcon />}
+                  onClick={handleGoToVisualizations}
+                  size="large"
+                >
+                  Go to Visualizations
+                </Button>
+              </Box>
             </Grid>
           </Grid>
         ) : (

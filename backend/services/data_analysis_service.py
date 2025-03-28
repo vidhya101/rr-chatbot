@@ -796,7 +796,7 @@ def analyze_dataset(file_path, target_column=None, model_type='linear'):
     return {
         'dashboard_data': dashboard_data,
         'report': report
-    }
+    } 
 
 def load_data(file_path: str) -> pd.DataFrame:
     """

@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, current_app, send_file
 import os
 import logging
 import json
-from services.visualization_service import generate_visualization, generate_dashboard, VisualizationService
+from services.visualization_service import generate_visualization, generate_dashboard
 from utils.db_utils import log_info, log_error
 from utils.validation import validate_file_path, validate_visualization_params
 from utils.retry import retry
@@ -18,7 +18,6 @@ from services.ml_service import MLService
 from pathlib import Path
 from services.data_processing_service import data_processing_service
 from services.cache_service import cache_service
-from utils.data_utils import convert_to_serializable
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -809,50 +808,6 @@ def create_advanced_dashboard():
     except Exception as e:
         logger.error(f"Error creating advanced dashboard: {str(e)}")
         return jsonify({'error': str(e)}), 500
-
-@visualization_bp.route('/visualizations', methods=['GET'])
-def get_visualizations():
-    try:
-        visualizations = visualization_service.get_all_visualizations()
-        return jsonify({
-            'success': True,
-            'visualizations': convert_to_serializable(visualizations)
-        })
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-@visualization_bp.route('/visualizations/save', methods=['POST'])
-def save_visualizations():
-    try:
-        data = request.get_json()
-        visualizations = data.get('visualizations', [])
-        source = data.get('source')
-        file_id = data.get('fileId')
-
-        if not visualizations:
-            return jsonify({
-                'success': False,
-                'error': 'No visualizations provided'
-            }), 400
-
-        saved_visualizations = visualization_service.save_visualizations(
-            visualizations=visualizations,
-            source=source,
-            file_id=file_id
-        )
-
-        return jsonify({
-            'success': True,
-            'visualizations': convert_to_serializable(saved_visualizations)
-        })
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
 
 # Ensure required directories exist
 os.makedirs(os.path.join('static', 'visualizations'), exist_ok=True)
