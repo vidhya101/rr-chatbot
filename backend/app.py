@@ -99,6 +99,10 @@ def create_app():
     from routes.model_routes import model_routes
     app.register_blueprint(model_routes, url_prefix='/api')
     
+    # Import and register data modeling routes
+    from routes.data_modeling_routes import data_modeling_routes
+    app.register_blueprint(data_modeling_routes, url_prefix='/api')
+    
     # Create database tables
     with app.app_context():
         db.create_all()

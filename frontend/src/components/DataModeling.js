@@ -49,7 +49,8 @@ import {
   Upload as UploadIcon
 } from '@mui/icons-material';
 import Plot from 'react-plotly.js';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import Visualizations from './Visualizations';
 
 const DataModeling = () => {
   const [activeStep, setActiveStep] = useState(0);
@@ -61,6 +62,7 @@ const DataModeling = () => {
   const [modelResults, setModelResults] = useState(null);
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [activeTab, setActiveTab] = useState(0);
+  const [selectedVisualizationData, setSelectedVisualizationData] = useState(null);
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: '',
@@ -69,14 +71,26 @@ const DataModeling = () => {
 
   const steps = [
     'Select Data',
-    'Choose Model',
-    'Configure Parameters',
-    'Train Model',
-    'View Results'
+    'Data Exploration',
+    'Data Cleaning',
+    'Data Analysis',
+    'Visualizations',
+    'Dashboard'
   ];
+
+  const [analysisResults, setAnalysisResults] = useState(null);
+  const [analysisStatus, setAnalysisStatus] = useState(null);
+  const [statusPollingInterval, setStatusPollingInterval] = useState(null);
+
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchFiles();
+    return () => {
+      if (statusPollingInterval) {
+        clearInterval(statusPollingInterval);
+      }
+    };
   }, []);
 
   const fetchFiles = async () => {
@@ -196,6 +210,167 @@ const DataModeling = () => {
 
   const handleCloseSnackbar = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
+  };
+
+  const handleStartAnalysis = async () => {
+    if (!selectedFile) {
+      setSnackbar({
+        open: true,
+        message: 'Please select a file first',
+        severity: 'warning'
+      });
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      debugLog('Starting data analysis', { fileId: selectedFile.id });
+      
+      const data = await fetchWithErrorHandling(`${API_BASE_URL}/modeling/analyze`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          file_id: selectedFile.id
+        })
+      });
+      
+      debugLog('Analysis response received', data);
+
+      if (data.success) {
+        setAnalysisResults(data.results);
+        setActiveStep(5); // Move to dashboard view
+        setSnackbar({
+          open: true,
+          message: 'Analysis completed successfully',
+          severity: 'success'
+        });
+      }
+    } catch (err) {
+      console.error('Error analyzing data:', err);
+      let errorMessage = 'Failed to analyze data';
+      
+      if (err.response && err.response.data) {
+        errorMessage = err.response.data.error || err.response.data.message || errorMessage;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
+      setSnackbar({
+        open: true,
+        message: errorMessage,
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Add this new function to handle NaN values
+  const handleNaNValues = (data) => {
+    if (typeof data === 'object' && data !== null) {
+      if (Array.isArray(data)) {
+        return data.map(item => handleNaNValues(item));
+      } else {
+        const result = {};
+        for (const key in data) {
+          result[key] = handleNaNValues(data[key]);
+        }
+        return result;
+      }
+    } else if (typeof data === 'number' && isNaN(data)) {
+      return null;
+    }
+    return data;
+  };
+
+  const handlePlotClick = (data, index) => {
+    setSelectedVisualizationData(data.points[0]);
+    // Update other visualizations based on selection
+    if (!analysisResults?.dashboard?.visualizations) return;
+    
+    const updatedVisualizations = analysisResults.dashboard.visualizations.map((viz, i) => {
+      if (i !== index) {
+        const plotData = JSON.parse(viz.plot);
+        plotData.data = plotData.data.map(trace => ({
+          ...trace,
+          opacity: selectedVisualizationData ? 0.3 : 1,
+          selectedpoints: selectedVisualizationData ? [selectedVisualizationData.pointIndex] : undefined
+        }));
+        return { ...viz, plot: JSON.stringify(plotData) };
+      }
+      return viz;
+    });
+    
+    setAnalysisResults(prev => ({
+      ...prev,
+      dashboard: {
+        ...prev.dashboard,
+        visualizations: updatedVisualizations
+      }
+    }));
+  };
+
+  const groupVisualizations = (visualizations) => {
+    return {
+      distribution: visualizations.filter(viz => viz.type === 'distribution'),
+      correlation: visualizations.filter(viz => viz.type === 'correlation'),
+      trend: visualizations.filter(viz => viz.type === 'trend'),
+      scatter: visualizations.filter(viz => viz.type === 'scatter'),
+      category: visualizations.filter(viz => viz.type === 'category'),
+      '3d': visualizations.filter(viz => viz.type === '3d'),
+      parallel: visualizations.filter(viz => viz.type === 'parallel')
+    };
+  };
+
+  const handleVisualizationClick = (data, index) => {
+    setSelectedVisualizationData(data);
+  };
+
+  const handleTransferToVisualizations = async () => {
+    if (!analysisResults?.dashboard?.visualizations) {
+      setSnackbar({
+        open: true,
+        message: 'No visualizations available to transfer',
+        severity: 'warning'
+      });
+      return;
+    }
+
+    try {
+      const response = await fetchWithErrorHandling(`${API_BASE_URL}/visualizations/save`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          visualizations: analysisResults.dashboard.visualizations,
+          source: 'data_modeling',
+          fileId: selectedFile.id
+        })
+      });
+
+      if (response.success) {
+        setSnackbar({
+          open: true,
+          message: 'Visualizations transferred successfully',
+          severity: 'success'
+        });
+        // Navigate to visualizations page
+        navigate('/visualizations');
+      }
+    } catch (err) {
+      console.error('Error transferring visualizations:', err);
+      setSnackbar({
+        open: true,
+        message: 'Failed to transfer visualizations: ' + (err.message || ''),
+        severity: 'error'
+      });
+    }
   };
 
   const renderFileSelection = () => (
@@ -452,45 +627,215 @@ const DataModeling = () => {
     </Card>
   );
 
-  const renderResults = () => (
+  const renderDataExploration = () => (
     <Card>
       <CardContent>
         <Typography variant="h6" gutterBottom>
-          Model Results
+          Data Exploration
         </Typography>
-        {modelResults && (
+        {analysisResults?.exploration ? (
           <Grid container spacing={2}>
             <Grid item xs={12}>
-              <Typography variant="subtitle1">
-                Model Performance Metrics
+              <Typography variant="subtitle1" gutterBottom>
+                Dataset Overview
               </Typography>
-              {modelResults.metrics && Object.entries(modelResults.metrics)
-                .filter(([metric, value]) => value !== null)
-                .map(([metric, value]) => (
-                  <Box key={metric} display="flex" alignItems="center" mt={1}>
-                    <Typography variant="body2" sx={{ minWidth: 120 }}>
-                      {metric.replace(/_/g, ' ').toUpperCase()}:
-                    </Typography>
-                    <Typography variant="body1" color="primary">
-                      {typeof value === 'number' ? value.toFixed(4) : value}
-                    </Typography>
-                  </Box>
-                ))}
+              <Box display="flex" flexDirection="column" gap={1}>
+                <Typography>
+                  Shape: {handleNaNValues(analysisResults.exploration.shape)[0]} rows × {handleNaNValues(analysisResults.exploration.shape)[1]} columns
+                </Typography>
+                <Typography>
+                  Memory Usage: {handleNaNValues(analysisResults.exploration.memory_usage).toFixed(2)} MB
+                </Typography>
+              </Box>
             </Grid>
-            {modelResults.plots && modelResults.plots.map((plot, index) => (
-              <Grid item xs={12} md={6} key={index}>
-                <Plot
-                  data={plot.data}
-                  layout={plot.layout}
-                  config={{ responsive: true }}
-                />
-              </Grid>
-            ))}
+            <Grid item xs={12}>
+              <Typography variant="subtitle1" gutterBottom>
+                Columns
+              </Typography>
+              <List>
+                {handleNaNValues(analysisResults.exploration.columns).map((col) => (
+                  <ListItem key={col}>
+                    <ListItemText
+                      primary={col}
+                      secondary={`Type: ${handleNaNValues(analysisResults.exploration.dtypes)[col]}`}
+                    />
+                    {handleNaNValues(analysisResults.exploration.missing_values)[col] > 0 && (
+                      <Chip
+                        label={`${handleNaNValues(analysisResults.exploration.missing_values)[col]} missing`}
+                        color="warning"
+                        size="small"
+                        sx={{ ml: 1 }}
+                      />
+                    )}
+                  </ListItem>
+                ))}
+              </List>
+            </Grid>
           </Grid>
+        ) : (
+          <Box display="flex" justifyContent="center" p={3}>
+            <Button
+              variant="contained"
+              onClick={handleStartAnalysis}
+              disabled={loading}
+              startIcon={loading ? <CircularProgress size={20} /> : <StartIcon />}
+            >
+              Start Exploration
+            </Button>
+          </Box>
         )}
       </CardContent>
     </Card>
   );
+
+  const renderDataCleaning = () => (
+    <Card>
+      <CardContent>
+        <Typography variant="h6" gutterBottom>
+          Data Cleaning
+        </Typography>
+        {analysisResults?.cleaning ? (
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <Typography variant="subtitle1" gutterBottom>
+                Cleaning Actions
+              </Typography>
+              <List>
+                {analysisResults.cleaning.actions.map((action, index) => (
+                  <ListItem key={index}>
+                    {action.action === 'fill_missing' ? (
+                      <ListItemText
+                        primary={`Filled ${action.count} missing values in ${action.column}`}
+                        secondary={`Method: ${action.method}`}
+                      />
+                    ) : action.action === 'remove_duplicates' ? (
+                      <ListItemText
+                        primary={`Removed ${action.count} duplicate rows`}
+                      />
+                    ) : (
+                      <ListItemText primary={JSON.stringify(action)} />
+                    )}
+                  </ListItem>
+                ))}
+              </List>
+            </Grid>
+          </Grid>
+        ) : (
+          <Box display="flex" justifyContent="center" p={3}>
+            <Typography color="textSecondary">
+              Complete data exploration to see cleaning results
+            </Typography>
+          </Box>
+        )}
+      </CardContent>
+    </Card>
+  );
+
+  const renderDataAnalysis = () => (
+    <Card>
+      <CardContent>
+        <Typography variant="h6" gutterBottom>
+          Data Analysis
+        </Typography>
+        {analysisResults?.analysis ? (
+          <Grid container spacing={2}>
+            {analysisResults.analysis.insights.map((insight, index) => (
+              <Grid item xs={12} key={index}>
+                <Card variant="outlined">
+                  <CardContent>
+                    <Typography variant="subtitle1" gutterBottom>
+                      {insight.title}
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      {insight.description}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        ) : (
+          <Box display="flex" justifyContent="center" p={3}>
+            <Typography color="textSecondary">
+              Complete data cleaning to see analysis results
+            </Typography>
+          </Box>
+        )}
+      </CardContent>
+    </Card>
+  );
+
+  const renderVisualizations = () => (
+    <Card>
+      <CardContent>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+          <Typography variant="h6">
+            Data Visualizations
+          </Typography>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleTransferToVisualizations}
+            disabled={!analysisResults?.dashboard?.visualizations}
+          >
+            Move to Visualizations
+          </Button>
+        </Box>
+        <Visualizations 
+          visualizations={analysisResults?.dashboard?.visualizations || []}
+          onVisualizationClick={handleVisualizationClick}
+        />
+      </CardContent>
+    </Card>
+  );
+
+  const renderDashboard = () => (
+    <Card>
+      <CardContent>
+        <Typography variant="h6" gutterBottom>
+          Advanced Analytics Dashboard
+        </Typography>
+        {analysisResults?.dashboard ? (
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <Typography variant="subtitle1" gutterBottom>
+                Data Insights & Visualizations
+              </Typography>
+              <Visualizations 
+                visualizations={analysisResults.dashboard.visualizations || []}
+                onVisualizationClick={handleVisualizationClick}
+              />
+            </Grid>
+          </Grid>
+        ) : (
+          <Box display="flex" justifyContent="center" p={3}>
+            <Typography color="textSecondary">
+              Complete all analysis steps to view the dashboard
+            </Typography>
+          </Box>
+        )}
+      </CardContent>
+    </Card>
+  );
+
+  const renderCurrentStep = () => {
+    switch (activeStep) {
+      case 0:
+        return renderFileSelection();
+      case 1:
+        return renderDataExploration();
+      case 2:
+        return renderDataCleaning();
+      case 3:
+        return renderDataAnalysis();
+      case 4:
+        return renderVisualizations();
+      case 5:
+        return renderDashboard();
+      default:
+        return null;
+    }
+  };
 
   return (
     <Box>
@@ -507,11 +852,7 @@ const DataModeling = () => {
       </Stepper>
 
       <Box mb={4}>
-        {activeStep === 0 && renderFileSelection()}
-        {activeStep === 1 && renderModelSelection()}
-        {activeStep === 2 && renderParameterConfiguration()}
-        {activeStep === 3 && renderModelTraining()}
-        {activeStep === 4 && renderResults()}
+        {renderCurrentStep()}
       </Box>
 
       <Box display="flex" justifyContent="space-between">

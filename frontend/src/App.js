@@ -13,7 +13,8 @@ import {
   ModelTraining as ModelTrainingIcon,
   History as HistoryIcon,
   Upload as UploadIcon,
-  BarChart as VisualizationIcon
+  BarChart as VisualizationIcon,
+  Storage as RawDataIcon
 } from '@mui/icons-material';
 
 // Components
@@ -24,6 +25,7 @@ import DataModeling from './components/DataModeling';
 import HistoryView from './components/HistoryView';
 import UploadView from './components/UploadView';
 import VisualizationView from './components/VisualizationView';
+import RawDataProcessor from './components/RawDataProcessor';
 
 // Contexts
 import { AuthProvider } from './contexts/AuthContext';
@@ -44,6 +46,7 @@ const App = () => {
     { text: 'Monitoring', icon: <MonitorIcon />, path: '/monitoring' },
     { text: 'Chat', icon: <ChatIcon />, path: '/chat' },
     { text: 'Data Modeling', icon: <ModelTrainingIcon />, path: '/modeling' },
+    { text: 'Raw Data', icon: <RawDataIcon />, path: '/raw-data' },
     { text: 'History', icon: <HistoryIcon />, path: '/history' },
     { text: 'Upload', icon: <UploadIcon />, path: '/upload' },
     { text: 'Visualizations', icon: <VisualizationIcon />, path: '/visualizations' }
@@ -115,6 +118,7 @@ const App = () => {
                     } 
                   />
                   <Route path="/modeling" element={<DataModeling />} />
+                  <Route path="/raw-data" element={<RawDataProcessor />} />
                   <Route path="/history" element={<HistoryView />} />
                   <Route path="/upload" element={<UploadView />} />
                   <Route path="/visualizations" element={<VisualizationView />} />
