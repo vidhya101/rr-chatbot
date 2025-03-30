@@ -21,6 +21,7 @@ import base64
 from datetime import datetime
 from typing import Dict, List, Any, Tuple
 from utils.data_utils import convert_to_serializable
+from services.visualization_service import create_visualizations
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -1015,332 +1016,143 @@ def analyze_data(df: pd.DataFrame) -> Dict[str, Any]:
                     if corr_value > 0.5:  # Only show strong correlations
                         top_correlations.append((numeric_cols[i], numeric_cols[j], corr_value))
             
-            for col1, col2, corr in sorted(top_correlations, key=lambda x: x[2], reverse=True)[:3]:
+            if top_correlations:
                 insights.append({
-                    "title": f"{col1} vs {col2}",
-                    "description": f"Correlation: {corr:.2f}",
-                    "type": "scatter",
+                    "title": "Strong Feature Relationships",
+                    "description": f"Found {len(top_correlations)} strong correlations",
+                    "type": "correlations",
                     "data": {
-                        "x": df[col1].tolist(),
-                        "y": df[col2].tolist(),
-                        "text": df.index.tolist()
+                        "correlations": [
+                            {
+                                "feature1": f1,
+                                "feature2": f2,
+                                "correlation": corr
+                            }
+                            for f1, f2, corr in top_correlations
+                        ]
                     }
                 })
         
-        # 6. Time series analysis
-        date_cols = df.select_dtypes(include=['datetime64']).columns
-        if len(date_cols) > 0:
-            date_col = date_cols[0]
-            for col in numeric_cols[:2]:  # First 2 numeric columns
-                insights.append({
-                    "title": f"{col} Over Time",
-                    "description": f"Time series analysis of {col}",
-                    "type": "trend",
-                    "data": {
-                        "x": df[date_col].astype(str).tolist(),
-                        "y": df[col].tolist()
-                    }
-                })
+        # Generate visualizations using the visualization service
+        visualizations = create_visualizations(df)
         
-        # 7. Distribution analysis for numeric features
-        for col in numeric_cols[:3]:  # First 3 numeric columns
-            insights.append({
-                "title": f"Distribution of {col}",
-                "description": f"Statistical distribution analysis",
-                "type": "distribution",
-                "data": {
-                    "values": df[col].dropna().tolist(),
-                    "stats": df[col].describe().to_dict()
-                }
-            })
-        
-        # 8. Category distribution
-        cat_cols = df.select_dtypes(include=['object', 'category']).columns
-        for col in cat_cols[:2]:  # First 2 categorical columns
-            value_counts = df[col].value_counts()
-            insights.append({
-                "title": f"Distribution of {col}",
-                "description": f"Category distribution analysis",
-                "type": "category",
-                "data": {
-                    "labels": value_counts.index.tolist()[:10],
-                    "values": value_counts.values.tolist()[:10]
-                }
-            })
-        
-        # 9. 3D scatter plot if enough numeric features
-        if len(numeric_cols) >= 3:
-            insights.append({
-                "title": "3D Feature Relationship",
-                "description": "3D visualization of feature relationships",
-                "type": "3d",
-                "data": {
-                    "x": df[numeric_cols[0]].tolist(),
-                    "y": df[numeric_cols[1]].tolist(),
-                    "z": df[numeric_cols[2]].tolist()
-                }
-            })
-        
-        # 10. Parallel coordinates for multi-dimensional analysis
-        if len(numeric_cols) >= 4:
-            parallel_data = {
-                "dimensions": [
-                    {
-                        "label": col,
-                        "values": df[col].tolist()
-                    } for col in numeric_cols[:6]  # First 6 numeric columns
-                ]
-            }
-            insights.append({
-                "title": "Multi-dimensional Analysis",
-                "description": "Parallel coordinates plot of multiple features",
-                "type": "parallel",
-                "data": parallel_data
-            })
-        
-        logger.info(f"Generated {len(insights)} insights")
-        return {"insights": insights}
+        return {
+            "success": True,
+            "insights": insights,
+            "visualizations": visualizations
+        }
         
     except Exception as e:
-        logger.error(f"Error analyzing data: {str(e)}")
+        logger.error(f"Error in data analysis: {str(e)}")
         return {"insights": [], "error": str(e)}
 
-def create_visualizations(df: pd.DataFrame, insights: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Create 4-6 focused visualizations from the dataset."""
-    visualizations = []
+def create_visualizations_with_insights(df: pd.DataFrame, insights: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Create visualizations based on data analysis insights
     
-    try:
-        # Get numeric and categorical columns
-        numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns
-        cat_cols = df.select_dtypes(include=['object', 'category']).columns
-        date_cols = df.select_dtypes(include=['datetime64']).columns
+    Args:
+        df: Input DataFrame
+        insights: List of insights from data analysis
         
-        # 1. Correlation Heatmap (if we have numeric columns)
-        if len(numeric_cols) > 1:
-            corr_matrix = df[numeric_cols].corr()
-            heatmap = {
-                'type': 'heatmap',
-                'x': corr_matrix.columns.tolist(),
-                'y': corr_matrix.columns.tolist(),
-                'z': corr_matrix.values.tolist(),
-                'colorscale': 'RdBu'
-            }
-            visualizations.append({
-                'type': 'correlation',
-                'title': 'Feature Correlation Analysis',
-                'plot': json.dumps({
-                    'data': [heatmap],
-                    'layout': {
-                        'title': 'Feature Correlations',
-                        'height': 500,
-                        'annotations': [{
-                            'x': corr_matrix.columns[i],
-                            'y': corr_matrix.columns[j],
-                            'text': f'{corr_matrix.values[i, j]:.2f}',
-                            'showarrow': False,
-                            'font': {'size': 10}
-                        } for i in range(len(corr_matrix.columns)) for j in range(len(corr_matrix.columns))]
-                    }
-                })
-            })
-
-        # 2. Time Series Analysis (if date column exists)
-        if len(date_cols) > 0 and len(numeric_cols) > 0:
-            date_col = date_cols[0]
-            numeric_col = numeric_cols[0]
-            # Aggregate by date
-            daily_data = df.groupby(df[date_col].dt.date)[numeric_col].agg(['mean', 'min', 'max']).reset_index()
-            
-            line_data = {
-                'type': 'scatter',
-                'mode': 'lines',
-                'x': daily_data[date_col].astype(str).tolist(),
-                'y': daily_data['mean'].tolist(),
-                'name': 'Average',
-                'line': {'color': 'rgb(31, 119, 180)'}
-            }
-            range_data = {
-                'type': 'scatter',
-                'mode': 'lines',
-                'x': daily_data[date_col].astype(str).tolist() + daily_data[date_col].astype(str).tolist()[::-1],
-                'y': daily_data['max'].tolist() + daily_data['min'].tolist()[::-1],
-                'fill': 'toself',
-                'fillcolor': 'rgba(31, 119, 180, 0.2)',
-                'line': {'color': 'rgba(31, 119, 180, 0)'},
-                'name': 'Range'
-            }
-            visualizations.append({
-                'type': 'trend',
-                'title': f'Time Series Analysis: {numeric_col}',
-                'plot': json.dumps({
-                    'data': [range_data, line_data],
-                    'layout': {
-                        'title': f'Trend Analysis of {numeric_col} Over Time',
-                        'height': 500,
-                        'xaxis': {'title': date_col},
-                        'yaxis': {'title': numeric_col},
-                        'showlegend': True,
-                        'hovermode': 'x unified'
-                    }
-                })
-            })
-
-        # 3. Distribution Analysis (Top 2 numeric features)
-        if len(numeric_cols) >= 2:
-            for col in numeric_cols[:2]:
-                hist_data = {
-                    'type': 'histogram',
-                    'x': df[col].dropna().tolist(),
-                    'name': 'Distribution',
-                    'opacity': 0.7,
-                    'nbinsx': 30
-                }
-                box_data = {
-                    'type': 'box',
-                    'y': df[col].dropna().tolist(),
-                    'name': 'Box Plot',
-                    'boxpoints': 'outliers'
-                }
+    Returns:
+        List of visualization objects
+    """
+    try:
+        logger.info("Creating visualizations from insights")
+        visualizations = []
+        
+        # Create visualizations based on insights
+        for insight in insights:
+            if insight['type'] == 'trend':
+                # Create trend visualization
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    x=insight['data']['dates'],
+                    y=insight['data']['counts'],
+                    mode='lines+markers'
+                ))
+                fig.update_layout(
+                    title=insight['title'],
+                    xaxis_title='Date',
+                    yaxis_title='Count'
+                )
                 visualizations.append({
-                    'type': 'distribution',
-                    'title': f'Distribution Analysis: {col}',
+                    'title': insight['title'],
+                    'description': insight['description'],
                     'plot': json.dumps({
-                        'data': [hist_data, box_data],
-                        'layout': {
-                            'title': f'Distribution Analysis of {col}',
-                            'height': 500,
-                            'showlegend': True,
-                            'grid': {'rows': 1, 'columns': 2},
-                            'annotations': [{
-                                'text': f'Mean: {df[col].mean():.2f}<br>Median: {df[col].median():.2f}',
-                                'showarrow': False,
-                                'x': 0.5,
-                                'y': 1.1,
-                                'xref': 'paper',
-                                'yref': 'paper'
-                            }]
-                        }
+                        'data': fig.data,
+                        'layout': fig.layout
                     })
                 })
-
-        # 4. Category Distribution (Top categorical feature)
-        if len(cat_cols) > 0:
-            col = cat_cols[0]
-            value_counts = df[col].value_counts()
-            pie_data = {
-                'type': 'pie',
-                'labels': value_counts.index.tolist()[:8],  # Top 8 categories
-                'values': value_counts.values.tolist()[:8],
-                'hole': 0.4,
-                'textinfo': 'label+percent',
-                'textposition': 'outside'
-            }
-            visualizations.append({
-                'type': 'category',
-                'title': f'Category Distribution: {col}',
-                'plot': json.dumps({
-                    'data': [pie_data],
-                    'layout': {
-                        'title': f'Distribution of {col}',
-                        'height': 500,
-                        'showlegend': True,
-                        'annotations': [{
-                            'text': f'Total Categories: {len(value_counts)}',
-                            'showarrow': False,
-                            'x': 0.5,
-                            'y': -0.1,
-                            'xref': 'paper',
-                            'yref': 'paper'
-                        }]
-                    }
-                })
-            })
-
-        # 5. Scatter Plot (if enough numeric columns with strong correlation)
-        if len(numeric_cols) >= 2:
-            corr_matrix = df[numeric_cols].corr()
-            # Find the most correlated pair
-            max_corr = 0
-            max_pair = None
-            for i in range(len(numeric_cols)):
-                for j in range(i+1, len(numeric_cols)):
-                    if abs(corr_matrix.iloc[i,j]) > max_corr:
-                        max_corr = abs(corr_matrix.iloc[i,j])
-                        max_pair = (numeric_cols[i], numeric_cols[j])
-            
-            if max_pair and max_corr > 0.5:  # Only show if correlation is strong
-                col1, col2 = max_pair
-                scatter_data = {
-                    'type': 'scatter',
-                    'mode': 'markers',
-                    'x': df[col1].tolist(),
-                    'y': df[col2].tolist(),
-                    'marker': {
-                        'size': 8,
-                        'opacity': 0.6,
-                        'color': df[numeric_cols[0]].tolist(),
-                        'colorscale': 'Viridis',
-                        'showscale': True
-                    }
-                }
+                
+            elif insight['type'] == 'category':
+                # Create category visualization
+                fig = go.Figure(data=[go.Bar(
+                    x=insight['data']['categories'],
+                    y=insight['data']['counts']
+                )])
+                fig.update_layout(
+                    title=insight['title'],
+                    xaxis_title='Category',
+                    yaxis_title='Count'
+                )
                 visualizations.append({
-                    'type': 'scatter',
-                    'title': f'Feature Relationship: {col1} vs {col2}',
+                    'title': insight['title'],
+                    'description': insight['description'],
                     'plot': json.dumps({
-                        'data': [scatter_data],
-                        'layout': {
-                            'title': f'{col1} vs {col2}<br>Correlation: {max_corr:.2f}',
-                            'height': 500,
-                            'xaxis': {'title': col1},
-                            'yaxis': {'title': col2},
-                            'hovermode': 'closest'
-                        }
+                        'data': fig.data,
+                        'layout': fig.layout
                     })
                 })
-
-        # 6. Parallel Coordinates (if enough numeric columns)
-        if len(numeric_cols) >= 3:
-            # Normalize the data for better visualization
-            scaler = StandardScaler()
-            normalized_data = scaler.fit_transform(df[numeric_cols])
-            
-            parallel_data = {
-                'type': 'parcoords',
-                'line': {
-                    'color': df[numeric_cols[0]].tolist(),
-                    'colorscale': 'Viridis'
-                },
-                'dimensions': [{
-                    'label': col,
-                    'values': normalized_data[:, i].tolist()
-                } for i, col in enumerate(numeric_cols[:6])]  # Limit to 6 dimensions
-            }
-            visualizations.append({
-                'type': 'parallel',
-                'title': 'Multi-dimensional Feature Analysis',
-                'plot': json.dumps({
-                    'data': [parallel_data],
-                    'layout': {
-                        'title': 'Parallel Coordinates Plot',
-                        'height': 500
-                    }
-                })
-            })
-
+                
+            elif insight['type'] == 'distribution':
+                if 'stats' in insight['data']:
+                    # Create distribution visualization
+                    stats = insight['data']['stats']
+                    fig = go.Figure()
+                    fig.add_trace(go.Box(
+                        y=[stats['25%'], stats['50%'], stats['75%']],
+                        name='Distribution'
+                    ))
+                    fig.update_layout(
+                        title=insight['title'],
+                        yaxis_title='Value'
+                    )
+                    visualizations.append({
+                        'title': insight['title'],
+                        'description': insight['description'],
+                        'plot': json.dumps({
+                            'data': fig.data,
+                            'layout': fig.layout
+                        })
+                    })
+                    
+            elif insight['type'] == 'correlation':
+                if 'heatmap' in insight['data']:
+                    # Create correlation heatmap
+                    heatmap_data = insight['data']['heatmap']
+                    fig = go.Figure(data=go.Heatmap(
+                        z=heatmap_data['z'],
+                        x=heatmap_data['x'],
+                        y=heatmap_data['y'],
+                        colorscale=heatmap_data['colorscale']
+                    ))
+                    fig.update_layout(
+                        title=insight['title']
+                    )
+                    visualizations.append({
+                        'title': insight['title'],
+                        'description': insight['description'],
+                        'plot': json.dumps({
+                            'data': fig.data,
+                            'layout': fig.layout
+                        })
+                    })
+        
+        return visualizations
+        
     except Exception as e:
         logger.error(f"Error creating visualizations: {str(e)}")
-        # Return a basic visualization if there's an error
-        visualizations.append({
-            'type': 'error',
-            'title': 'Error in Visualization',
-            'plot': json.dumps({
-                'data': [{'type': 'scatter', 'x': [], 'y': []}],
-                'layout': {'title': 'Error creating visualization'}
-            })
-        })
-
-    # Ensure we have at least 4 but no more than 6 visualizations
-    return visualizations[:min(6, max(4, len(visualizations)))]
+        return []
 
 def prepare_dashboard_data(df: pd.DataFrame, insights: List[Dict[str, Any]], 
                          visualizations: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -1519,69 +1331,37 @@ def prepare_dashboard_data(df: pd.DataFrame, insights: List[Dict[str, Any]],
             }
         }
 
-def analyze_product_recommendations(file_path: str) -> Dict[str, Any]:
-    """
-    Main function to analyze product recommendations data
-    
-    Args:
-        file_path: Path to the input CSV file
-        
-    Returns:
-        Complete analysis results and dashboard configuration
-    """
+def analyze_product_recommendations(file_path):
+    """Analyze data file and create visualizations"""
     try:
-        # 1. Load data
-        df = load_data(file_path)
+        # Load data
+        df = pd.read_csv(file_path)
+        print(f"Loaded data with shape: {df.shape}")
         
-        # 2. Explore data
-        exploration_results = explore_data(df)
-        
-        # 3. Clean data
-        df_clean, cleaning_report = clean_data(df)
-        
-        # 4. Analyze data
-        analysis_results = analyze_data(df_clean)
-        
-        # 5. Create visualizations
-        visualizations = create_visualizations(df_clean, analysis_results["insights"])
-        
-        # 6. Prepare dashboard
-        dashboard = prepare_dashboard_data(df_clean, analysis_results["insights"], visualizations)
-        
-        # Compile all results
-        results = {
-            "exploration": exploration_results,
-            "cleaning": cleaning_report,
-            "analysis": analysis_results,
-            "dashboard": dashboard
+        # Basic data info
+        info = {
+            'shape': df.shape,
+            'columns': df.columns.tolist(),
+            'dtypes': df.dtypes.astype(str).to_dict(),
+            'missing_values': df.isnull().sum().to_dict(),
+            'numeric_columns': df.select_dtypes(include=['float64', 'int64']).columns.tolist(),
+            'categorical_columns': df.select_dtypes(include=['object', 'category']).columns.tolist()
         }
         
-        # Pre-process data to handle special types
-        def preprocess_data(obj):
-            if isinstance(obj, (pd.DataFrame, pd.Series)):
-                return obj.to_dict()
-            elif isinstance(obj, np.ndarray):
-                return obj.tolist()
-            elif isinstance(obj, (np.integer, np.floating)):
-                return obj.item()
-            elif isinstance(obj, dict):
-                return {k: preprocess_data(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return [preprocess_data(item) for item in obj]
-            elif isinstance(obj, tuple):
-                return tuple(preprocess_data(item) for item in obj)
-            elif pd.isna(obj) or (isinstance(obj, float) and np.isnan(obj)):
-                return None
-            return obj
+        # Generate visualizations using the visualization service
+        visualizations = create_visualizations(df)
         
-        # First preprocess the data
-        preprocessed_results = preprocess_data(results)
+        # Prepare response
+        response = {
+            'success': True,
+            'info': info,
+            'visualizations': visualizations,
+            'visualization_count': len(visualizations)
+        }
         
-        # Then convert to JSON-serializable format
-        serializable_results = convert_to_serializable(preprocessed_results)
-        
-        return serializable_results
+        print(f"Generated {len(visualizations)} visualizations")
+        return response
         
     except Exception as e:
-        logger.error(f"Error in product recommendations analysis: {str(e)}")
+        print(f"Error in analyze_product_recommendations: {str(e)}")
         raise 

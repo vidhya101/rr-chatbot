@@ -31,7 +31,8 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  Snackbar
+  Snackbar,
+  Paper
 } from '@mui/material';
 import {
   ModelTraining as ModelIcon,
@@ -51,6 +52,7 @@ import {
 } from '@mui/icons-material';
 import Plot from 'react-plotly.js';
 import { Link, useNavigate } from 'react-router-dom';
+import axios from 'axios';
 
 const DataModeling = () => {
   const navigate = useNavigate();
@@ -82,6 +84,9 @@ const DataModeling = () => {
   const [analysisResults, setAnalysisResults] = useState(null);
   const [analysisStatus, setAnalysisStatus] = useState(null);
   const [statusPollingInterval, setStatusPollingInterval] = useState(null);
+  const [modelingResults, setModelingResults] = useState(null);
+  const [files, setFiles] = useState([]);
+  const [loadingFile, setLoadingFile] = useState(false);
 
   useEffect(() => {
     fetchFiles();
@@ -104,6 +109,7 @@ const DataModeling = () => {
       if (data.success) {
         debugLog(`Loaded ${data.files ? data.files.length : 0} files for modeling`, data.files);
         setUploadedFiles(data.files || []);
+        setFiles(data.files || []);
         
         // Show message if no files available
         if (!data.files || data.files.length === 0) {
@@ -129,7 +135,7 @@ const DataModeling = () => {
 
   const handleFileSelect = (file) => {
     setSelectedFile(file);
-    setActiveStep(1);
+    handleAnalyze(file.id);
   };
 
   const handleModelSelect = (model) => {
@@ -314,18 +320,6 @@ const DataModeling = () => {
     }));
   };
 
-  const groupVisualizations = (visualizations) => {
-    return {
-      distribution: visualizations.filter(viz => viz.type === 'distribution'),
-      correlation: visualizations.filter(viz => viz.type === 'correlation'),
-      trend: visualizations.filter(viz => viz.type === 'trend'),
-      scatter: visualizations.filter(viz => viz.type === 'scatter'),
-      category: visualizations.filter(viz => viz.type === 'category'),
-      '3d': visualizations.filter(viz => viz.type === '3d'),
-      parallel: visualizations.filter(viz => viz.type === 'parallel')
-    };
-  };
-
   const handleGoToVisualizations = () => {
     if (analysisResults?.dashboard?.visualizations) {
       // Store visualizations in localStorage or state management
@@ -363,9 +357,9 @@ const DataModeling = () => {
           <Box display="flex" justifyContent="center" p={3}>
             <CircularProgress />
           </Box>
-        ) : uploadedFiles.length > 0 ? (
+        ) : files.length > 0 ? (
           <List>
-            {uploadedFiles.map((file) => (
+            {files.map((file) => (
               <ListItem
                 button
                 key={file.id}
@@ -734,84 +728,107 @@ const DataModeling = () => {
   );
 
   const renderVisualizations = () => {
-    if (!analysisResults?.dashboard?.visualizations) {
+    if (!modelingResults?.visualizations) {
       return (
-        <Box display="flex" justifyContent="center" p={3}>
-          <Typography color="textSecondary">
-            Complete data analysis to see visualizations
-          </Typography>
+        <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+          <Typography>No visualizations available. Please analyze your data first.</Typography>
         </Box>
       );
     }
 
-    // Ensure we have an array of visualizations
-    const visualizations = Array.isArray(analysisResults.dashboard.visualizations) 
-      ? analysisResults.dashboard.visualizations 
-      : [];
-
-    // Debug logging
-    console.log('Rendering visualizations:', visualizations.length);
-    
     return (
-      <Box>
-        <Typography variant="h6" gutterBottom>
-          Interactive Data Visualizations
-        </Typography>
+      <>
+        <Box display="flex" justifyContent="flex-end" mb={3}>
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<VisibilityIcon />}
+            onClick={() => {
+              try {
+                // Process visualizations for storage
+                const processedVisualizations = modelingResults.visualizations.map(viz => ({
+                  title: viz.title,
+                  plot: {
+                    data: viz.figure.data,
+                    layout: viz.figure.layout
+                  },
+                  insight: viz.insight
+                }));
+                
+                // Store processed visualizations
+                localStorage.setItem('visualizations', JSON.stringify(processedVisualizations));
+                // Navigate to visualizations component
+                navigate('/visualizations');
+              } catch (err) {
+                console.error('Error storing visualizations:', err);
+                setError('Error storing visualizations. Please try again.');
+              }
+            }}
+          >
+            View in Visualizations
+          </Button>
+        </Box>
         <Grid container spacing={3}>
-          {visualizations.map((viz, index) => {
-            // Parse the plot data safely
-            let plotData, plotLayout;
-            try {
-              const plotJson = typeof viz.plot === 'string' ? JSON.parse(viz.plot) : viz.plot;
-              plotData = plotJson.data || [];
-              plotLayout = plotJson.layout || {};
-            } catch (err) {
-              console.error('Error parsing visualization:', err);
-              return null;
-            }
-
-            return (
-              <Grid item xs={12} md={6} lg={6} key={index}>
-                <Card variant="outlined" sx={{ height: '100%' }}>
-                  <CardContent>
-                    <Typography variant="subtitle1" gutterBottom>
-                      {viz.title || `Visualization ${index + 1}`}
-                    </Typography>
-                    <Box height={400} width="100%">
-                      <Plot
-                        data={plotData}
-                        layout={{
-                          ...plotLayout,
-                          autosize: true,
-                          height: 350,
-                          width: undefined,
-                          margin: { t: 30, r: 10, b: 30, l: 60 },
-                          hovermode: 'closest'
-                        }}
-                        config={{ 
-                          responsive: true,
-                          displayModeBar: true,
-                          scrollZoom: true
-                        }}
-                        style={{ width: '100%', height: '100%' }}
-                        onClick={(data) => handlePlotClick(data, index)}
-                        onError={(err) => console.error('Plot error:', err)}
-                      />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            );
-          })}
+          {modelingResults.visualizations.map((viz, index) => (
+            <Grid item xs={12} md={6} lg={4} key={index}>
+              <Paper 
+                sx={{ 
+                  p: 2, 
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  position: 'relative'
+                }}
+              >
+                <Typography variant="h6" gutterBottom>
+                  {viz.title || `Visualization ${index + 1}`}
+                </Typography>
+                {viz.insight && (
+                  <Typography 
+                    variant="body2" 
+                    color="text.secondary" 
+                    sx={{ mb: 2 }}
+                  >
+                    {viz.insight}
+                  </Typography>
+                )}
+                <Box 
+                  flexGrow={1} 
+                  minHeight="400px"
+                  sx={{
+                    '& .js-plotly-plot': {
+                      width: '100% !important',
+                      height: '100% !important'
+                    }
+                  }}
+                >
+                  <Plot
+                    data={viz.figure.data}
+                    layout={{
+                      ...viz.figure.layout,
+                      autosize: true,
+                      margin: { t: 30, r: 10, l: 10, b: 30 }
+                    }}
+                    style={{ width: '100%', height: '100%' }}
+                    config={{ 
+                      responsive: true,
+                      displayModeBar: true,
+                      displaylogo: false,
+                      modeBarButtonsToRemove: [
+                        'lasso2d',
+                        'select2d',
+                        'hoverClosestCartesian',
+                        'hoverCompareCartesian'
+                      ]
+                    }}
+                    useResizeHandler={true}
+                  />
+                </Box>
+              </Paper>
+            </Grid>
+          ))}
         </Grid>
-        {selectedVisualizationData && (
-          <Box mt={2}>
-            <Alert severity="info" onClose={() => setSelectedVisualizationData(null)}>
-              Selected point: {JSON.stringify(selectedVisualizationData)}
-            </Alert>
-          </Box>
-        )}
-      </Box>
+      </>
     );
   };
 
@@ -914,6 +931,112 @@ const DataModeling = () => {
         return renderDashboard();
       default:
         return null;
+    }
+  };
+
+  const handleAnalyze = async (fileId) => {
+    console.log(`Analyzing file with ID: ${fileId}`);
+    setLoadingFile(true);
+    setError(null);
+    
+    try {
+      const response = await axios.post(`${API_BASE_URL}/modeling/analyze`, {
+        file_id: fileId,
+        visualization_config: {
+          min_visualizations: 12,
+          max_visualizations: 15,
+          required_types: [
+            'correlation_heatmap',
+            'distribution_histogram',
+            'box_plot',
+            'scatter_plot',
+            'parallel_coordinates',
+            'violin_plot',
+            'histogram_matrix',
+            'kde_plot',
+            'heatmap',
+            '3d_scatter',
+            'joint_plot',
+            'hexbin_plot',
+            'pie_chart',
+            'treemap'
+          ]
+        }
+      });
+      
+      console.log('Analysis response received:', response.data);
+      const vizCount = response.data.visualization_count || 0;
+      console.log(`Number of visualizations: ${vizCount}`);
+      
+      if (!response.data.results.visualizations || vizCount < 12) {
+        setError(`Warning: Only received ${vizCount} visualizations. Expected at least 12.`);
+      }
+
+      // Helper function to safely parse JSON strings
+      const safeJSONParse = (str) => {
+        try {
+          return typeof str === 'string' ? JSON.parse(str) : str;
+        } catch (e) {
+          console.error('JSON parse error:', e);
+          return str;
+        }
+      };
+
+      // Helper function to replace NaN and undefined with null
+      const sanitizeValue = (value) => {
+        if (value === undefined || (typeof value === 'number' && isNaN(value))) {
+          return null;
+        }
+        if (Array.isArray(value)) {
+          return value.map(sanitizeValue);
+        }
+        if (value && typeof value === 'object') {
+          const sanitized = {};
+          for (const key in value) {
+            sanitized[key] = sanitizeValue(value[key]);
+          }
+          return sanitized;
+        }
+        return value;
+      };
+
+      // Process visualizations
+      const processedVisualizations = response.data.results.visualizations.map(viz => {
+        // Create a clean copy of the visualization
+        const processedViz = {
+          ...viz,
+          title: viz.title || '',
+          insight: viz.insight || '',
+          figure: {
+            data: (viz.figure?.data || []).map(trace => ({
+              ...trace,
+              x: sanitizeValue(trace.x),
+              y: sanitizeValue(trace.y),
+              z: sanitizeValue(trace.z),
+              text: sanitizeValue(trace.text),
+              values: sanitizeValue(trace.values),
+              labels: sanitizeValue(trace.labels)
+            })),
+            layout: sanitizeValue(viz.figure?.layout || {})
+          }
+        };
+
+        return processedViz;
+      });
+
+      // Update modelingResults with processed visualizations
+      const processedResults = {
+        ...response.data.results,
+        visualizations: processedVisualizations
+      };
+      
+      setModelingResults(processedResults);
+      setActiveStep(4); // Move to visualizations step
+    } catch (error) {
+      console.error('Error analyzing file:', error);
+      setError(error.response?.data?.error || 'Error analyzing file. Please try again.');
+    } finally {
+      setLoadingFile(false);
     }
   };
 

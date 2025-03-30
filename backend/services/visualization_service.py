@@ -9,6 +9,10 @@ import logging
 import json
 from datetime import datetime
 import traceback
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import plotly.express as px
+from scipy import stats
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -290,4 +294,590 @@ def generate_dashboard(file_path):
         return {
             'success': False,
             'error': str(e)
-        } 
+        }
+
+def create_visualizations(df):
+    """Create comprehensive set of visualizations based on data characteristics"""
+    MIN_VISUALIZATIONS = 12
+    MAX_VISUALIZATIONS = 15
+    
+    print(f"Starting visualization generation for dataframe with shape {df.shape}")
+    
+    visualizations = []
+    numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns
+    categorical_cols = df.select_dtypes(include=['object', 'category']).columns
+    
+    print(f"Found {len(numeric_cols)} numeric columns and {len(categorical_cols)} categorical columns")
+
+    # Helper function to convert numpy types to native Python types
+    def convert_to_serializable(obj):
+        if isinstance(obj, np.ndarray):
+            return [convert_to_serializable(x) for x in obj.tolist()]
+        elif isinstance(obj, (np.int64, np.int32, np.int16, np.int8)):
+            return int(obj)
+        elif isinstance(obj, (np.float64, np.float32, np.float16)):
+            if np.isnan(obj):
+                return None
+            return float(obj)
+        elif isinstance(obj, pd.Series):
+            return [convert_to_serializable(x) for x in obj.tolist()]
+        elif isinstance(obj, list):
+            return [convert_to_serializable(x) for x in obj]
+        elif isinstance(obj, dict):
+            return {k: convert_to_serializable(v) for k, v in obj.items()}
+        elif pd.isna(obj):
+            return None
+        return obj
+
+    # Core visualizations that must be generated
+    core_visualizations = [
+        {
+            'type': 'correlation_heatmap',
+            'generator': lambda: create_correlation_heatmap(df, numeric_cols),
+            'title': 'Feature Correlation Analysis'
+        },
+        {
+            'type': 'distribution_histogram',
+            'generator': lambda: create_distribution_histogram(df, numeric_cols),
+            'title': 'Distribution Analysis'
+        },
+        {
+            'type': 'box_plot',
+            'generator': lambda: create_box_plot_matrix(df, numeric_cols),
+            'title': 'Box Plot Analysis'
+        },
+        {
+            'type': 'scatter_plot',
+            'generator': lambda: create_scatter_plot(df, numeric_cols),
+            'title': 'Feature Relationships'
+        },
+        {
+            'type': 'parallel_coordinates',
+            'generator': lambda: create_parallel_coordinates(df, numeric_cols),
+            'title': 'Multi-dimensional Feature Analysis'
+        },
+        {
+            'type': 'violin_plot',
+            'generator': lambda: create_violin_plot_matrix(df, numeric_cols),
+            'title': 'Violin Distribution Analysis'
+        },
+        {
+            'type': 'kde_plot',
+            'generator': lambda: create_kde_plot(df, numeric_cols),
+            'title': 'Kernel Density Estimation'
+        },
+        {
+            'type': 'heatmap',
+            'generator': lambda: create_correlation_heatmap(df, numeric_cols),
+            'title': 'Data Heatmap Analysis'
+        },
+        {
+            'type': '3d_scatter',
+            'generator': lambda: create_3d_scatter(df, numeric_cols),
+            'title': '3D Feature Analysis'
+        },
+        {
+            'type': 'joint_plot',
+            'generator': lambda: create_joint_plot(df, numeric_cols),
+            'title': 'Joint Distribution Analysis'
+        },
+        {
+            'type': 'hexbin_plot',
+            'generator': lambda: create_hexbin_plot(df, numeric_cols),
+            'title': 'Hexbin Analysis'
+        }
+    ]
+
+    # Generate all core visualizations
+    for viz_config in core_visualizations:
+        try:
+            print(f"Generating visualization: {viz_config['type']}...")
+            result = viz_config['generator']()
+            if result is not None:
+                # Process the figure data to ensure it's serializable
+                if 'figure' in result:
+                    if isinstance(result['figure'], dict):
+                        # Process data array
+                        if 'data' in result['figure']:
+                            result['figure']['data'] = [
+                                {k: convert_to_serializable(v) for k, v in trace.items()}
+                                for trace in result['figure']['data']
+                            ]
+                        # Process layout
+                        if 'layout' in result['figure']:
+                            result['figure']['layout'] = convert_to_serializable(result['figure']['layout'])
+                
+                visualizations.append({
+                    "type": viz_config['type'],
+                    "title": viz_config['title'],
+                    "figure": result['figure'],
+                    "insight": convert_to_serializable(result.get('insight', ''))
+                })
+                print(f"Successfully generated {viz_config['type']}")
+            else:
+                print(f"Warning: {viz_config['type']} generator returned None")
+        except Exception as e:
+            print(f"Error generating {viz_config['type']}: {str(e)}")
+            continue
+
+    # If we still don't have enough visualizations, add categorical visualizations
+    if len(visualizations) < MIN_VISUALIZATIONS and len(categorical_cols) > 0:
+        for col in categorical_cols:
+            if len(visualizations) >= MIN_VISUALIZATIONS:
+                break
+            try:
+                # Add pie chart
+                pie_result = create_pie_chart(df, col)
+                if pie_result is not None:
+                    # Process the figure data
+                    if isinstance(pie_result['figure'], dict):
+                        if 'data' in pie_result['figure']:
+                            pie_result['figure']['data'] = [
+                                {k: convert_to_serializable(v) for k, v in trace.items()}
+                                for trace in pie_result['figure']['data']
+                            ]
+                        if 'layout' in pie_result['figure']:
+                            pie_result['figure']['layout'] = convert_to_serializable(pie_result['figure']['layout'])
+                    
+                    visualizations.append({
+                        "type": "pie_chart",
+                        "title": f"Category Distribution: {col}",
+                        "figure": pie_result['figure'],
+                        "insight": convert_to_serializable(pie_result.get('insight', ''))
+                    })
+
+                # Add treemap
+                treemap_result = create_treemap(df, col)
+                if treemap_result is not None:
+                    # Process the figure data
+                    if isinstance(treemap_result['figure'], dict):
+                        if 'data' in treemap_result['figure']:
+                            treemap_result['figure']['data'] = [
+                                {k: convert_to_serializable(v) for k, v in trace.items()}
+                                for trace in treemap_result['figure']['data']
+                            ]
+                        if 'layout' in treemap_result['figure']:
+                            treemap_result['figure']['layout'] = convert_to_serializable(treemap_result['figure']['layout'])
+                    
+                    visualizations.append({
+                        "type": "treemap",
+                        "title": f"Hierarchical View: {col}",
+                        "figure": treemap_result['figure'],
+                        "insight": convert_to_serializable(treemap_result.get('insight', ''))
+                    })
+            except Exception as e:
+                print(f"Error generating categorical visualization for {col}: {str(e)}")
+                continue
+
+    # If we still don't have enough visualizations, add detailed column analyses
+    if len(visualizations) < MIN_VISUALIZATIONS:
+        for col in numeric_cols:
+            if len(visualizations) >= MIN_VISUALIZATIONS:
+                break
+            try:
+                result = create_detailed_column_analysis(df[col])
+                if result is not None:
+                    # Process the figure data
+                    if isinstance(result['figure'], dict):
+                        if 'data' in result['figure']:
+                            result['figure']['data'] = [
+                                {k: convert_to_serializable(v) for k, v in trace.items()}
+                                for trace in result['figure']['data']
+                            ]
+                        if 'layout' in result['figure']:
+                            result['figure']['layout'] = convert_to_serializable(result['figure']['layout'])
+                    
+                    visualizations.append({
+                        "type": "detailed_analysis",
+                        "title": f"Detailed Analysis of {col}",
+                        "figure": result['figure'],
+                        "insight": convert_to_serializable(result.get('insight', ''))
+                    })
+            except Exception as e:
+                print(f"Error creating detailed analysis for {col}: {str(e)}")
+                continue
+
+    # Final check to ensure all data is serializable
+    visualizations = convert_to_serializable(visualizations[:MAX_VISUALIZATIONS])
+    print(f"Successfully generated {len(visualizations)} visualizations")
+    return visualizations
+
+def create_correlation_heatmap(df, numeric_cols=None):
+    """Create correlation heatmap for numeric columns"""
+    try:
+        if numeric_cols is None:
+            numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns
+        
+        corr_matrix = df[numeric_cols].corr()
+        max_corr = corr_matrix.max().max()
+        
+        fig = go.Figure(data=go.Heatmap(
+            z=corr_matrix,
+            x=corr_matrix.columns,
+            y=corr_matrix.columns,
+            colorscale='RdBu',
+            zmid=0
+        ))
+        
+        fig.update_layout(
+            title='Feature Correlation Analysis',
+            height=600
+        )
+        
+        return {
+            'figure': fig.to_dict(),
+            'insight': f'Shows correlation strength between features. Maximum correlation: {max_corr:.2f}'
+        }
+    except Exception as e:
+        logger.error(f"Error creating correlation heatmap: {str(e)}")
+        return None
+
+def create_distribution_histogram(df, numeric_cols=None):
+    """Create distribution histograms for numeric columns"""
+    try:
+        if numeric_cols is None:
+            numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns[:6]
+        
+        fig = make_subplots(rows=2, cols=3, subplot_titles=numeric_cols)
+        row, col = 1, 1
+        
+        for col_name in numeric_cols:
+            fig.add_trace(
+                go.Histogram(x=df[col_name], name=col_name),
+                row=row, col=col
+            )
+            col += 1
+            if col > 3:
+                row += 1
+                col = 1
+        
+        fig.update_layout(
+            title='Distribution Analysis',
+            showlegend=False,
+            height=800
+        )
+        
+        skewness = df[numeric_cols].skew()
+        max_skew = abs(skewness).max()
+        
+        return {
+            'figure': fig.to_dict(),
+            'insight': f'Shows data distributions. Maximum skewness: {max_skew:.2f}'
+        }
+    except Exception as e:
+        logger.error(f"Error creating distribution histogram: {str(e)}")
+        return None
+
+def create_box_plot_matrix(df, numeric_cols=None):
+    """Create box plots for numeric columns"""
+    try:
+        if numeric_cols is None:
+            numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns[:6]
+        
+        fig = go.Figure()
+        for col in numeric_cols:
+            fig.add_trace(go.Box(y=df[col], name=col))
+        
+        fig.update_layout(
+            title='Box Plot Analysis',
+            height=600
+        )
+        
+        outliers = {}
+        for col in numeric_cols:
+            Q1 = df[col].quantile(0.25)
+            Q3 = df[col].quantile(0.75)
+            IQR = Q3 - Q1
+            outliers[col] = ((df[col] < (Q1 - 1.5 * IQR)) | (df[col] > (Q3 + 1.5 * IQR))).sum()
+        
+        max_outliers = max(outliers.values())
+        
+        return {
+            'figure': fig.to_dict(),
+            'insight': f'Shows data distribution and outliers. Maximum outliers in a feature: {max_outliers}'
+        }
+    except Exception as e:
+        logger.error(f"Error creating box plot matrix: {str(e)}")
+        return None
+
+def create_scatter_plot(df, numeric_cols=None):
+    """Create scatter plot matrix for numeric columns"""
+    try:
+        if numeric_cols is None:
+            numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns[:4]
+        
+        fig = px.scatter_matrix(
+            df[numeric_cols],
+            dimensions=numeric_cols,
+            title='Feature Relationships'
+        )
+        
+        fig.update_layout(height=800)
+        
+        return {
+            'figure': fig.to_dict(),
+            'insight': 'Shows relationships between pairs of numeric features'
+        }
+    except Exception as e:
+        logger.error(f"Error creating scatter plot: {str(e)}")
+        return None
+
+def create_parallel_coordinates(df, numeric_cols=None):
+    """Create parallel coordinates plot"""
+    try:
+        if numeric_cols is None:
+            numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns[:6]
+        
+        fig = px.parallel_coordinates(
+            df[numeric_cols],
+            title='Multi-dimensional Feature Analysis'
+        )
+        
+        fig.update_layout(height=600)
+        
+        return {
+            'figure': fig.to_dict(),
+            'insight': 'Shows relationships across multiple dimensions simultaneously'
+        }
+    except Exception as e:
+        logger.error(f"Error creating parallel coordinates: {str(e)}")
+        return None
+
+def create_violin_plot_matrix(df, numeric_cols=None):
+    """Create violin plots for numeric columns"""
+    try:
+        if numeric_cols is None:
+            numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns[:6]
+        
+        fig = go.Figure()
+        for col in numeric_cols:
+            fig.add_trace(go.Violin(y=df[col], name=col, box_visible=True))
+        
+        fig.update_layout(
+            title='Violin Distribution Analysis',
+            height=600
+        )
+        
+        return {
+            'figure': fig.to_dict(),
+            'insight': 'Shows detailed distribution shape for each feature'
+        }
+    except Exception as e:
+        logger.error(f"Error creating violin plot matrix: {str(e)}")
+        return None
+
+def create_kde_plot(df, numeric_cols=None):
+    """Create KDE plots for numeric columns"""
+    try:
+        if numeric_cols is None:
+            numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns[:6]
+        
+        fig = go.Figure()
+        for col in numeric_cols:
+            kde = np.histogram(df[col].dropna(), bins=50, density=True)
+            fig.add_trace(go.Scatter(x=kde[1][:-1], y=kde[0], name=col, mode='lines'))
+        
+        fig.update_layout(
+            title='Kernel Density Estimation',
+            height=600
+        )
+        
+        return {
+            'figure': fig.to_dict(),
+            'insight': 'Shows smoothed distribution estimates for each feature'
+        }
+    except Exception as e:
+        logger.error(f"Error creating kde plot: {str(e)}")
+        return None
+
+def create_3d_scatter(df, numeric_cols=None):
+    """Create 3D scatter plot"""
+    try:
+        if numeric_cols is None:
+            numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns[:3]
+        
+        if len(numeric_cols) >= 3:
+            fig = px.scatter_3d(
+                df,
+                x=numeric_cols[0],
+                y=numeric_cols[1],
+                z=numeric_cols[2],
+                title='3D Feature Analysis'
+            )
+            
+            fig.update_layout(height=800)
+            
+            return {
+                'figure': fig.to_dict(),
+                'insight': 'Shows relationships between three numeric features in 3D space'
+            }
+    except Exception as e:
+        logger.error(f"Error creating 3d scatter: {str(e)}")
+        return None
+
+def create_joint_plot(df, numeric_cols=None):
+    """Create joint distribution plot"""
+    try:
+        if numeric_cols is None:
+            numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns[:2]
+        
+        if len(numeric_cols) >= 2:
+            fig = make_subplots(
+                rows=2, cols=2,
+                row_heights=[0.7, 0.3],
+                column_widths=[0.7, 0.3],
+                vertical_spacing=0.02,
+                horizontal_spacing=0.02
+            )
+            
+            # Scatter plot
+            fig.add_trace(
+                go.Scatter(x=df[numeric_cols[0]], y=df[numeric_cols[1]], mode='markers'),
+                row=1, col=1
+            )
+            
+            # Histogram for x
+            fig.add_trace(
+                go.Histogram(x=df[numeric_cols[0]]),
+                row=2, col=1
+            )
+            
+            # Histogram for y
+            fig.add_trace(
+                go.Histogram(y=df[numeric_cols[1]]),
+                row=1, col=2
+            )
+            
+            fig.update_layout(
+                title='Joint Distribution Analysis',
+                height=800,
+                showlegend=False
+            )
+            
+            return {
+                'figure': fig.to_dict(),
+                'insight': 'Shows joint and marginal distributions for two features'
+            }
+    except Exception as e:
+        logger.error(f"Error creating joint plot: {str(e)}")
+        return None
+
+def create_hexbin_plot(df, numeric_cols=None):
+    """Create hexbin plot"""
+    try:
+        if numeric_cols is None:
+            numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns[:2]
+        
+        if len(numeric_cols) >= 2:
+            fig = px.density_heatmap(
+                df,
+                x=numeric_cols[0],
+                y=numeric_cols[1],
+                marginal_x='histogram',
+                marginal_y='histogram',
+                title='Hexbin Analysis'
+            )
+            
+            fig.update_layout(height=800)
+            
+            return {
+                'figure': fig.to_dict(),
+                'insight': 'Shows density of point clusters between two features'
+            }
+    except Exception as e:
+        logger.error(f"Error creating hexbin plot: {str(e)}")
+        return None
+
+def create_pie_chart(df, categorical_col):
+    """Create pie chart for categorical column"""
+    try:
+        value_counts = df[categorical_col].value_counts()
+        fig = px.pie(
+            values=value_counts.values,
+            names=value_counts.index,
+            title=f'Category Distribution: {categorical_col}'
+        )
+        
+        fig.update_layout(height=600)
+        
+        return {
+            'figure': fig.to_dict(),
+            'insight': f'Shows distribution of categories in {categorical_col}'
+        }
+    except Exception as e:
+        logger.error(f"Error creating pie chart: {str(e)}")
+        return None
+
+def create_treemap(df, categorical_col):
+    """Create treemap for categorical column"""
+    try:
+        value_counts = df[categorical_col].value_counts()
+        fig = px.treemap(
+            names=value_counts.index,
+            parents=[''] * len(value_counts),
+            values=value_counts.values,
+            title=f'Hierarchical View: {categorical_col}'
+        )
+        
+        fig.update_layout(height=600)
+        
+        return {
+            'figure': fig.to_dict(),
+            'insight': f'Shows hierarchical view of categories in {categorical_col}'
+        }
+    except Exception as e:
+        logger.error(f"Error creating treemap: {str(e)}")
+        return None
+
+def create_detailed_column_analysis(df_col):
+    """Create detailed analysis visualization for a single column"""
+    try:
+        fig = make_subplots(rows=2, cols=2)
+        
+        # Histogram
+        fig.add_trace(
+            go.Histogram(x=df_col, name='Distribution'),
+            row=1, col=1
+        )
+        
+        # Box plot
+        fig.add_trace(
+            go.Box(y=df_col, name='Box Plot'),
+            row=1, col=2
+        )
+        
+        # KDE
+        kde = np.histogram(df_col.dropna(), bins=50, density=True)
+        fig.add_trace(
+            go.Scatter(x=kde[1][:-1], y=kde[0], name='KDE'),
+            row=2, col=1
+        )
+        
+        # QQ plot
+        sorted_data = np.sort(df_col.dropna())
+        theoretical_quantiles = np.quantile(np.random.normal(size=len(sorted_data)), np.linspace(0, 1, len(sorted_data)))
+        fig.add_trace(
+            go.Scatter(x=theoretical_quantiles, y=sorted_data, mode='markers', name='Q-Q Plot'),
+            row=2, col=2
+        )
+        
+        fig.update_layout(
+            title=f'Detailed Analysis of {df_col.name}',
+            height=800,
+            showlegend=True
+        )
+        
+        stats = {
+            'mean': df_col.mean(),
+            'std': df_col.std(),
+            'skew': df_col.skew(),
+            'kurtosis': df_col.kurtosis()
+        }
+        
+        return {
+            'figure': fig.to_dict(),
+            'insight': f'Detailed analysis shows: Mean={stats["mean"]:.2f}, Std={stats["std"]:.2f}, Skew={stats["skew"]:.2f}'
+        }
+    except Exception as e:
+        logger.error(f"Error creating detailed column analysis: {str(e)}")
+        return None 

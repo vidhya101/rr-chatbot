@@ -4,6 +4,8 @@ from services.data_analysis_service import analyze_product_recommendations
 from utils.db_utils import log_info, log_error
 from utils.data_utils import convert_to_serializable
 import os
+import json
+import numpy as np
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -12,11 +14,22 @@ logger = logging.getLogger(__name__)
 # Create blueprint
 data_modeling_routes = Blueprint('data_modeling_routes', __name__)
 
+# Custom JSON encoder to handle NumPy types
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, (np.int64, np.int32, np.int16, np.int8)):
+            return int(obj)
+        if isinstance(obj, (np.float64, np.float32, np.float16)):
+            return float(obj)
+        return super().default(obj)
+
 @data_modeling_routes.route('/modeling/analyze', methods=['POST'])
 def analyze_data():
-    """Analyze data file and create dashboard"""
+    """Analyze data file and create visualizations"""
     try:
-        # Get file path from request
+        # Get request data
         data = request.get_json()
         if not data or 'file_id' not in data:
             return jsonify({
@@ -26,9 +39,8 @@ def analyze_data():
             
         file_id = data['file_id']
         
-        # Get file path from file ID (you'll need to implement this based on your file storage)
-        file_path = os.path.join('uploads', f'{file_id}.csv')  # Example path
-        
+        # Get file path
+        file_path = os.path.join('uploads', f'{file_id}.csv')
         if not os.path.exists(file_path):
             return jsonify({
                 'success': False,
@@ -49,32 +61,25 @@ def analyze_data():
         # Analyze data
         results = analyze_product_recommendations(file_path)
         
-        # Convert results to serializable format
+        # Check visualization count
+        viz_count = results.get('visualization_count', 0)
+        if viz_count < 12:
+            logger.warning(f"Generated only {viz_count} visualizations, expected at least 12")
+        
+        # Convert results to JSON-serializable format
         serializable_results = convert_to_serializable(results)
         
         return jsonify({
             'success': True,
-            'results': serializable_results
+            'results': serializable_results,
+            'visualization_count': viz_count
         }), 200
         
     except Exception as e:
-        error_message = f"Error analyzing data: {str(e)}"
-        logger.error(error_message)
-        
-        # Log error
-        try:
-            log_error(
-                user_id=request.headers.get('X-User-ID', 'anonymous'),
-                source='data_modeling_routes.analyze_data',
-                message='Error analyzing data',
-                details={'error': str(e)}
-            )
-        except Exception as log_err:
-            logger.warning(f"Could not log error: {str(log_err)}")
-        
+        logger.error(f"Error analyzing data: {str(e)}")
         return jsonify({
             'success': False,
-            'error': error_message
+            'error': str(e)
         }), 500
 
 @data_modeling_routes.route('/modeling/status/<file_id>', methods=['GET'])

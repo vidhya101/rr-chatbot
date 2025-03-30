@@ -73,9 +73,8 @@ const Visualizations = () => {
               // Parse the plot data safely
               let plotData, plotLayout;
               try {
-                const plotJson = typeof viz.plot === 'string' ? JSON.parse(viz.plot) : viz.plot;
-                plotData = plotJson.data || [];
-                plotLayout = plotJson.layout || {};
+                plotData = viz.plot.data || [];
+                plotLayout = viz.plot.layout || {};
               } catch (err) {
                 console.error('Error parsing visualization:', err);
                 return null;
@@ -97,6 +96,15 @@ const Visualizations = () => {
                           </Tooltip>
                         </Box>
                       </Box>
+                      {viz.insight && (
+                        <Typography 
+                          variant="body2" 
+                          color="text.secondary" 
+                          sx={{ mb: 2 }}
+                        >
+                          {viz.insight}
+                        </Typography>
+                      )}
                       <Box height={500} width="100%" id={`viz-${viz.title}`}>
                         <Plot
                           data={plotData}
